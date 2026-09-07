@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CI: GitHub Actions workflow runs the pure-python test suite on push/PR.
+- **Discovery filtering**: only devices advertising the scale service UUID
+  (`0000a602`) or a scale-like name token are offered by the integration —
+  other realme BLE devices (e.g. "realme Buds Air7") are no longer detected
+  as a scale.
 - **Multi-user support**: every scale entry now holds a *list* of user
   profiles; users can be added / edited / removed after install from a
   menu-driven options flow.

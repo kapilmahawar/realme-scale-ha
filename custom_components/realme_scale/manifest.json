@@ -13,29 +13,29 @@
       "service_uuid": "0000a602-0000-1000-8000-00805f9b34fb"
     },
     {
-      "local_name": "realme*"
-    },
-    {
-      "local_name": "Realme*"
-    },
-    {
-      "local_name": "REALME*"
-    },
-    {
       "connectable": false,
       "service_uuid": "0000a602-0000-1000-8000-00805f9b34fb"
     },
     {
-      "connectable": false,
-      "local_name": "realme*"
+      "local_name": "realme*scale*"
+    },
+    {
+      "local_name": "Realme*Scale*"
+    },
+    {
+      "local_name": "REALME*SCALE*"
     },
     {
       "connectable": false,
-      "local_name": "Realme*"
+      "local_name": "realme*scale*"
     },
     {
       "connectable": false,
-      "local_name": "REALME*"
+      "local_name": "Realme*Scale*"
+    },
+    {
+      "connectable": false,
+      "local_name": "REALME*SCALE*"
     }
   ]
 }

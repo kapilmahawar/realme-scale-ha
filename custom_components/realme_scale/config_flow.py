@@ -162,9 +162,18 @@ def _user_choices(users: list[ScaleUser]) -> dict[str, str]:
 
 
 def device_matches(discovery: BluetoothServiceInfoBleak) -> bool:
-    """Whether a discovered advertisement looks like a Realme scale."""
+    """Whether a discovered advertisement looks like a Realme *scale*.
+
+    Deliberately stricter than openScale's ``name contains "realme"`` test:
+    HA auto-discovery would otherwise also offer unrelated realme BLE gear
+    (e.g. "realme Buds Air7"), which does not speak the scale protocol.
+    A candidate must advertise the scale service UUID (``a602``) or carry a
+    scale-ish name token.
+    """
     name = (discovery.name or "").lower()
-    return "realme" in name or SVC_A602 in discovery.service_uuids
+    if SVC_A602 in discovery.service_uuids:
+        return True
+    return "scale" in name or "rmh2011" in name
 
 
 def _discovered_devices(hass: HomeAssistant) -> list[BluetoothServiceInfoBleak]:
