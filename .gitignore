@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# HA
+*.log
+config/.storage/
+config/custom_components/realme_scale/.DS_Store
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local secrets
+*.token
+.env

@@ -1,0 +1,10 @@
+reconnect:
+  name: Reconnect
+  description: >-
+    Force the integration to drop the current Bluetooth session and
+    re-run the discovery + handshake sequence. Useful after changing the
+    user profile or when the scale stopped responding.
+  target:
+    device:
+      integration: realme_scale
+  fields: {}
