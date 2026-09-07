@@ -24,8 +24,6 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
-type RealmeScaleConfigEntry = ConfigEntry[RealmeScaleCoordinator]
-
 CONF_DEVICE_ID = "device_id"
 
 RECONNECT_SCHEMA = vol.Schema(
@@ -36,7 +34,7 @@ RECONNECT_SCHEMA = vol.Schema(
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: RealmeScaleConfigEntry
+    hass: HomeAssistant, entry: ConfigEntry
 ) -> bool:
     """Set up Realme Smart Scale from a config entry."""
     coordinator = RealmeScaleCoordinator(hass, entry)
@@ -76,7 +74,7 @@ async def async_setup_entry(
 
 
 async def async_unload_entry(
-    hass: HomeAssistant, entry: RealmeScaleConfigEntry
+    hass: HomeAssistant, entry: ConfigEntry
 ) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
