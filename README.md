@@ -49,14 +49,14 @@ talks to an actively connected GATT client, so:
 3. **Settings → Devices & Services → Add Integration → Realme Smart Scale.**
    - The scale should appear in the discovery list. If it does not, wake the
      scale (step on it once) and retry, or add its MAC address manually.
-4. Fill in the **user profile** — this is written into the scale handshake
-   and drives the local body-composition math:
+4. Fill in the **first user profile** — this is written into the scale
+   handshake and drives the local body-composition math:
    - sex, age, height (cm), activity level (openScale's five levels —
      `heavy`/`extreme` select the "fitness" formula branch), and an optional
      initial weight in kg (leave `0` for "new user", which sends the
      `0xFFFF` sentinel like openScale does).
-5. Change the profile later via the entry's **Options** (applies to the next
-   connection / measurement).
+5. More users can be added at any time via the entry's **Options** (see
+   *Multiple users* below), which also updates the active profile.
 
 ### HACS
 
@@ -67,11 +67,12 @@ and installed from there. Manual installation (above) works identically.
 
 ## Entities
 
-Sensors (all on one device):
+The integration registers **one HA device per configured user** (sensors
+show that user's latest attributed measurement) plus one *scale* device:
 
-| Entity | Unit | Notes |
+| Entity (on each user's device) | Unit | Notes |
 |---|---|---|
-| `sensor.<name>_weight` | kg | live weight from the scale |
+| `sensor.<name>_weight` | kg | latest attributed weight |
 | `sensor.<name>_body_fat` | % | locally computed from impedance |
 | `sensor.<name>_muscle` | % | see quirk note below |
 | `sensor.<name>_water` | % | locally computed |
@@ -80,11 +81,112 @@ Sensors (all on one device):
 | `sensor.<name>_visceral_fat` | – | unitless index |
 | `sensor.<name>_impedance` | Ω | diagnostic (disabled by default) |
 | `sensor.<name>_last_measured` | timestamp | measurement time from the scale |
-| `binary_sensor.<name>_connected` | – | live GATT link state |
+
+On the *scale* device:
+
+| Entity | Notes |
+|---|---|
+| `binary_sensor.<name>_connected` | live GATT link state |
+| `sensor.<name>_unassigned_count` | measurements waiting to be assigned |
+| `select.<name>_active_user` | switch which profile goes into the handshake |
 
 An event `realme_scale_measurement` is fired for every parsed packet so
-automations can react without polling entities. Attributes of each sensor
-carry `measured_at` and the configured `user`.
+automations can react without polling entities. The event carries
+`address`, `measurement_id`, `status` (`assigned` | `unknown`), `weight`,
+`measured_at` and — when attributed — `user`/`user_id` plus the locally
+derived metrics. When the reading is ambiguous (`unknown`) but a few users
+plausibly match, `candidate_users` lists them nearest-first. Keep the
+`measurement_id`: it is what you use to assign/`reassign` a measurement.
+
+## Multiple users & measurement attribution
+
+The RMH2011 protocol never says *who* is standing on the scale, so the
+integration keeps **profiles in Home Assistant** and attributes every packet
+using the two signals the scale *does* send — weight and impedance:
+
+1. **Who measures is a (weight + impedance) match.** A measurement is
+   automatically given to a user whose last reading is within the *weight
+   tolerance* (kg) and, when both readings carry impedance, within the
+   *impedance tolerance* (Ω). Impedance lets the integration tell apart two
+   people who weigh the same (their body-fat/impedance differs). Single-user
+   scales always attribute to that user. Tunables: Options → Auto-assignment
+   (0 on an axis disables it).
+2. **Not sure = do not guess.** A reading matching *nobody* or matching
+   *several* people is kept **unassigned** and published with
+   `status: unknown`. When several people plausibly match, the event also
+   carries `candidate_users` (nearest first) so a prompt can offer quick
+   actions — nothing is silently attributed to the wrong profile.
+3. **Confirm from a menu later.** Options → *Assign unassigned
+   measurements* lists every waiting measurement (time + weight) with a user
+   dropdown. Wrong auto-assignment? Options → *Reassign a recent
+   measurement* moves an already-assigned record to the right user; body
+   composition is recomputed under the chosen profile either way. Both are
+   available to automations via the `realme_scale.assign_measurement`
+   service (field `user` accepts the name or the stable id).
+4. **Active user = handshake profile.** The active user's profile (sex /
+   age / height / initial weight) is written into the scale on every
+   connection and is the profile used the moment a brand-new user is
+   confirmed for the first time. Change it with the `select` entity or via
+   Options; the scale reconnects to apply it.
+
+Options flow actions: *Add user*, *Edit user*, *Remove user* (deletes their
+records), *Choose active user*, *Auto-assignment settings*, *Assign
+unassigned measurements*, *Reassign a recent measurement*, *Save and
+close*. Structural changes reload the entry so each user's device
+appears/disappears automatically.
+
+**Tip:** after adding users, each person's *first* weigh-in has no baseline
+yet, so it lands in *Unassigned measurements* — assign it once and from then
+on that user is recognised automatically (as long as weights stay separated
+or the impedance fingerprint discriminates).
+
+## Per-user dashboards
+
+Nothing extra is needed for dashboards: each user is a **device** with its
+own sensors, and Home Assistant records each sensor's history over time.
+Entity ids are derived from the device name:
+
+```text
+device:            Realme Smart Scale - Alice          (via "Add user")
+entities:          sensor.realme_smart_scale_alice_weight
+                   sensor.realme_smart_scale_alice_body_fat
+                   sensor.realme_smart_scale_alice_muscle
+                   sensor.realme_smart_scale_alice_water
+                   sensor.realme_smart_scale_alice_bone_mass
+                   sensor.realme_smart_scale_alice_lean_body_mass
+                   sensor.realme_smart_scale_alice_visceral_fat
+                   sensor.realme_smart_scale_alice_last_measured
+```
+
+To build one page per person, create a view per user and filter by their
+device:
+
+```yaml
+# dashboard YAML - one card per metric, or use the history graph card
+type: entities
+entities:
+  - sensor.realme_smart_scale_alice_weight
+  - sensor.realme_smart_scale_alice_body_fat
+  - sensor.realme_smart_scale_alice_water
+title: Alice - today
+
+type: history-graph
+entities:
+  - sensor.realme_smart_scale_alice_weight
+  - sensor.realme_smart_scale_alice_body_fat
+hours_to_show: 24
+```
+
+Template helpers if you prefer cards fed by templates:
+
+```jinja
+{{ states('sensor.realme_smart_scale_alice_weight') }} kg
+```
+
+A "who was that?" confirm flow for unassigned readings: listen for
+`realme_scale_measurement` events with `status: unknown` and call
+`realme_scale.assign_measurement` (measurement_id + user name) from an
+automation / script / notification action.
 
 ### Known quirk (faithful port)
 
@@ -102,6 +204,12 @@ want the Yunmai convention instead, change one line in
   re-runs discovery + handshake. Useful after changing the user profile or
   when the scale stops answering. Target a specific device or call with no
   target to reconnect all configured scales.
+- **`realme_scale.assign_measurement`** — (re)assign a stored measurement
+  to a user: `measurement_id` (from the event) and `user` (name or stable
+  id). Works for unassigned *and* already-assigned measurements (the latter
+  fixes a wrong auto-assignment). Equivalent to *Options → Assign / Reassign
+  measurements*; useful from automations, e.g. a notification with quick
+  actions after an unmatched weighing.
 
 The other services in the original blueprint (`sync_history`, `identify_user`,
 `calibrate`, `clear_history`) are **not** registered because the reference

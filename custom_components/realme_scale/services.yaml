@@ -8,3 +8,30 @@ reconnect:
     device:
       integration: realme_scale
   fields: {}
+assign_measurement:
+  name: Assign measurement
+  description: >-
+    Assign (or re-assign) a stored measurement to a specific user. The
+    measurement_id is delivered with every realme_scale_measurement event and
+    user accepts either the stable user id or the user's name. Works for
+    unassigned measurements and for correcting an already-assigned one.
+    The same action is available from the integration's options (Assign /
+    Reassign measurements).
+  target:
+    device:
+      integration: realme_scale
+  fields:
+    measurement_id:
+      name: Measurement id
+      description: The measurement_id attribute of a realme_scale_measurement event.
+      required: true
+      example: 0b1f2e3d4a5b
+      selector:
+        text:
+    user:
+      name: User
+      description: Name or id of the user this measurement belongs to.
+      required: true
+      example: Alice
+      selector:
+        text:

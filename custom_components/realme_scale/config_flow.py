@@ -3,16 +3,23 @@
 The scale is discovered through Home Assistant's Bluetooth integration
 (local adapter or proxy that relays advertisements).  Because the RMH2011
 only streams data to an *active* GATT client, the flow additionally asks for
-the user profile (sex / age / height / activity level / initial weight) that
-is written into the handshake and used for the local BIA calculation.
+the first user profile (sex / age / height / activity level / initial
+weight) that is written into the handshake and used for the local BIA
+calculation.
+
+The options flow is a menu for managing **multiple users** after install:
+add / edit / remove users, pick the active (handshake) user, tune the
+auto-assignment weight tolerance and assign "unknown" measurements to a
+specific user from a list.
 """
 
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
@@ -20,23 +27,58 @@ from homeassistant.components.bluetooth import (
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import HomeAssistant
-import homeassistant.helpers.config_validation as cv
 
 from .const import (
     ACTIVITY_LEVELS,
     CONF_ACTIVITY_LEVEL,
     CONF_AGE,
+    CONF_AUTO_ASSIGN_KG,
     CONF_HEIGHT,
+    CONF_IMPEDANCE_TOL_OHM,
     CONF_INITIAL_WEIGHT,
     CONF_SEX,
     CONF_USER_NAME,
+    DEFAULT_AUTO_ASSIGN_KG,
+    DEFAULT_IMPEDANCE_TOL_OHM,
     DEFAULT_NAME,
     DOMAIN,
+    FIELD_MEASUREMENT_ID,
+    FIELD_USER,
     SEX_FEMALE,
     SEX_MALE,
     SVC_A602,
 )
 from .coordinator import RealmeScaleCoordinator
+from .records import display_label
+from .scale_controller import (
+    ScaleUser,
+    build_user_options,
+    parse_user_options,
+)
+
+# Options-flow menu actions (option key -> step id to run).
+ACTION_ADD_USER = "add_user"
+ACTION_EDIT_USER = "edit_user"
+ACTION_REMOVE_USER = "remove_user"
+ACTION_ACTIVE_USER = "active_user"
+ACTION_SETTINGS = "settings"
+ACTION_ASSIGN = "assign_unknown"
+ACTION_REASSIGN = "reassign_measurement"
+ACTION_SAVE = "save_close"
+
+# Local schema field names (not stored in options).
+FIELD_USER_SELECT = "user"
+FIELD_KEEP_UNASSIGNED = "__keep_unassigned__"
+
+
+def _new_user_id() -> str:
+    """A short user id, distinct from measurement ids (u-prefixed)."""
+    return f"u{uuid4().hex[:10]}"
+
+
+def _user_label(user: ScaleUser) -> str:
+    return user.name or f"User ({user.user_id[:8]})"
+
 
 # ---------------------------------------------------------------------------
 # Schema fragments
@@ -47,12 +89,12 @@ def _sex_options() -> list[str]:
     return [SEX_MALE, SEX_FEMALE]
 
 
-def user_profile_schema(data: dict[str, Any] | None = None) -> vol.Schema:
-    """Voluptuous schema for the user profile (config + options flow)."""
+def profile_schema(data: dict[str, Any] | None = None) -> vol.Schema:
+    """Voluptuous schema for one user profile."""
     data = data or {}
     return vol.Schema(
         {
-            vol.Optional(
+            vol.Required(
                 CONF_USER_NAME,
                 default=data.get(CONF_USER_NAME, ""),
             ): str,
@@ -84,16 +126,34 @@ def user_profile_schema(data: dict[str, Any] | None = None) -> vol.Schema:
     )
 
 
-def _normalize_profile(user_input: dict[str, Any]) -> dict[str, Any]:
-    """Coerce profile values to stable types for storage."""
+def _profile_from_input(user_input: dict[str, Any], user_id: str) -> ScaleUser:
+    """Build a ScaleUser from validated form input."""
+    return ScaleUser(
+        user_id=user_id,
+        name=str(user_input[CONF_USER_NAME]).strip(),
+        sex=str(user_input[CONF_SEX]),
+        age=int(user_input[CONF_AGE]),
+        height_cm=float(user_input[CONF_HEIGHT]),
+        activity_level=str(user_input[CONF_ACTIVITY_LEVEL]),
+        initial_weight=float(user_input.get(CONF_INITIAL_WEIGHT, 0.0)),
+    )
+
+
+def _profile_prefill(user: ScaleUser) -> dict[str, Any]:
+    """Map a ScaleUser back into form values."""
     return {
-        CONF_USER_NAME: str(user_input.get(CONF_USER_NAME, "")),
-        CONF_SEX: str(user_input.get(CONF_SEX, SEX_MALE)),
-        CONF_AGE: int(user_input[CONF_AGE]),
-        CONF_HEIGHT: float(user_input[CONF_HEIGHT]),
-        CONF_ACTIVITY_LEVEL: str(user_input[CONF_ACTIVITY_LEVEL]),
-        CONF_INITIAL_WEIGHT: float(user_input.get(CONF_INITIAL_WEIGHT, 0.0)),
+        CONF_USER_NAME: user.name,
+        CONF_SEX: user.sex,
+        CONF_AGE: user.age,
+        CONF_HEIGHT: user.height_cm,
+        CONF_ACTIVITY_LEVEL: user.activity_level,
+        CONF_INITIAL_WEIGHT: user.initial_weight,
     }
+
+
+def _user_choices(users: list[ScaleUser]) -> dict[str, str]:
+    """id -> readable name, for select menus."""
+    return {user.user_id: _user_label(user) for user in users}
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +182,7 @@ def _mac_from_service(discovery: BluetoothServiceInfoBleak) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Config flow
+# Config flow (initial setup)
 # ---------------------------------------------------------------------------
 
 
@@ -208,49 +268,392 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_profile(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Collect the user profile written into the scale handshake."""
+        """Collect the first user profile written into the handshake."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            profile = _normalize_profile(user_input)
+            user = _profile_from_input(user_input, _new_user_id())
             return self.async_create_entry(
                 title=f"{self._name} ({self._address})",
                 data={CONF_ADDRESS: self._address, CONF_NAME: self._name},
-                options=profile,
+                options=build_user_options(
+                    [user], user.user_id, DEFAULT_AUTO_ASSIGN_KG
+                ),
             )
 
         return self.async_show_form(
             step_id="profile",
-            data_schema=user_profile_schema(),
+            data_schema=profile_schema(),
             errors=errors,
             description_placeholders={"name": self._name},
         )
 
 
 # ---------------------------------------------------------------------------
-# Options flow
+# Options flow (manage users + assignment after install)
 # ---------------------------------------------------------------------------
 
 
 class RealmeScaleOptionsFlow(OptionsFlow):
-    """Handle options for the Realme Smart Scale integration."""
+    """Menu-driven manager for users and the unknown-measurement queue."""
+
+    def __init__(self) -> None:
+        """Initialize the options flow state."""
+        self._users: list[ScaleUser] | None = None
+        self._active_user_id: str | None = None
+        self._tolerance_kg: float = DEFAULT_AUTO_ASSIGN_KG
+        self._impedance_tol_ohm: float = DEFAULT_IMPEDANCE_TOL_OHM
+        self._removed_user_ids: list[str] = []
+        self._menu_options: dict[str, str] = {}
+        self._edit_user_id: str | None = None
+
+    # -- helpers -----------------------------------------------------------
+
+    def _load_state(self) -> None:
+        """Mirror the current entry.options into mutable flow state."""
+        users, active_user_id, tolerance, impedance_tol = parse_user_options(
+            self.config_entry.options
+        )
+        self._users = users
+        self._active_user_id = active_user_id
+        self._tolerance_kg = tolerance
+        self._impedance_tol_ohm = impedance_tol
+
+    def _coordinator(self) -> RealmeScaleCoordinator | None:
+        return self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+
+    def _users_or_default(self) -> list[ScaleUser]:
+        if self._users is None:
+            self._load_state()
+        assert self._users is not None
+        return self._users
+
+    def _build_menu(self) -> dict[str, str]:
+        """Menu entries; assign options only appear when there is work."""
+        menu: dict[str, str] = {
+            ACTION_ADD_USER: "add_user",
+            ACTION_EDIT_USER: "edit_user",
+            ACTION_REMOVE_USER: "remove_user",
+            ACTION_ACTIVE_USER: "active_user",
+            ACTION_SETTINGS: "settings",
+        }
+        coordinator = self._coordinator()
+        if coordinator is None:
+            menu[ACTION_SAVE] = "save_close"
+            return menu
+        if coordinator.unknown_count:
+            menu[ACTION_ASSIGN] = "assign_pick"
+        if coordinator.assigned_records(1):
+            menu[ACTION_REASSIGN] = "reassign_pick"
+        menu[ACTION_SAVE] = "save_close"
+        return menu
+
+    # -- main menu ---------------------------------------------------------
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manage the user profile options."""
+        """Present the user-management menu."""
+        if self._users is None:
+            self._load_state()
+        self._menu_options = self._build_menu()
+        coordinator = self._coordinator()
+        pending = coordinator.unknown_count if coordinator is not None else 0
+        return self.async_show_menu(
+            step_id="menu",
+            menu_options=self._menu_options,
+            description_placeholders={
+                "count": str(len(self._users or [])),
+                "pending": str(pending),
+            },
+        )
+
+    # -- add / edit / remove users ----------------------------------------
+
+    async def async_step_add_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect a new user profile."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            profile = _normalize_profile(user_input)
-            coordinator: RealmeScaleCoordinator | None = self.hass.data.get(
-                DOMAIN, {}
-            ).get(self.config_entry.entry_id)
-            if coordinator is not None:
-                coordinator.update_profile(profile)
-            return self.async_create_entry(title="", data=profile)
+            if not str(user_input.get(CONF_USER_NAME, "")).strip():
+                errors[CONF_USER_NAME] = "name_required"
+            else:
+                user = _profile_from_input(user_input, _new_user_id())
+                self._users_or_default().append(user)
+                return await self.async_step_init()
 
         return self.async_show_form(
-            step_id="init",
-            data_schema=user_profile_schema(dict(self.config_entry.options)),
+            step_id="add_user",
+            data_schema=profile_schema(),
+            errors=errors,
+        )
+
+    async def async_step_edit_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick which user to edit."""
+        if user_input is not None:
+            self._edit_user_id = user_input[FIELD_USER_SELECT]
+            return await self.async_step_edit_user_form()
+        return self.async_show_form(
+            step_id="edit_user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(FIELD_USER_SELECT): vol.In(
+                        _user_choices(self._users_or_default())
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_edit_user_form(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Edit one user's profile."""
+        users = self._users_or_default()
+        target_id = self._edit_user_id
+        target = next((u for u in users if u.user_id == target_id), None)
+        if target is None:
+            return await self.async_step_init()
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not str(user_input.get(CONF_USER_NAME, "")).strip():
+                errors[CONF_USER_NAME] = "name_required"
+            else:
+                updated = _profile_from_input(user_input, target_id)
+                users[users.index(target)] = updated
+                return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="edit_user_form",
+            data_schema=profile_schema(_profile_prefill(target)),
+            errors=errors,
+            description_placeholders={"user": _user_label(target)},
+        )
+
+    async def async_step_remove_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Remove one user (the last user cannot be removed)."""
+        users = self._users_or_default()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            user_id = user_input[FIELD_USER_SELECT]
+            if len(users) <= 1:
+                errors[FIELD_USER_SELECT] = "last_user"
+            else:
+                users[:] = [u for u in users if u.user_id != user_id]
+                self._removed_user_ids.append(user_id)
+                if self._active_user_id == user_id:
+                    self._active_user_id = users[0].user_id if users else None
+                return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="remove_user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(FIELD_USER_SELECT): vol.In(
+                        _user_choices(users)
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
+    # -- active user & settings -------------------------------------------
+
+    async def async_step_active_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the profile written into the scale handshake."""
+        if user_input is not None:
+            self._active_user_id = user_input[FIELD_USER_SELECT]
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="active_user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        FIELD_USER_SELECT, default=self._active_user_id
+                    ): vol.In(_user_choices(self._users_or_default())),
+                }
+            ),
             description_placeholders={
-                "name": self.config_entry.data.get(CONF_NAME, DEFAULT_NAME)
+                "active": _user_label(
+                    next(
+                        (
+                            u
+                            for u in self._users_or_default()
+                            if u.user_id == self._active_user_id
+                        ),
+                        self._users_or_default()[0],
+                    )
+                )
             },
+        )
+
+    async def async_step_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Tune auto-assignment (weight + impedance tolerances)."""
+        if user_input is not None:
+            self._tolerance_kg = float(user_input[CONF_AUTO_ASSIGN_KG])
+            self._impedance_tol_ohm = float(user_input[CONF_IMPEDANCE_TOL_OHM])
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="settings",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_AUTO_ASSIGN_KG, default=self._tolerance_kg
+                    ): vol.All(
+                        vol.Coerce(float), vol.Range(min=0.0, max=50.0)
+                    ),
+                    vol.Required(
+                        CONF_IMPEDANCE_TOL_OHM, default=self._impedance_tol_ohm
+                    ): vol.All(
+                        vol.Coerce(float), vol.Range(min=0.0, max=500.0)
+                    ),
+                }
+            ),
+        )
+
+    # -- assign / reassign measurements -----------------------------------
+
+    async def _assign_via_form(
+        self,
+        coordinator: RealmeScaleCoordinator,
+        measurement_id: str,
+        user_id: str,
+    ) -> tuple[bool, str]:
+        """Resolve a user choice and (re)assign; True when done."""
+        if user_id == FIELD_KEEP_UNASSIGNED:
+            return True, ""
+        user = coordinator.get_user(user_id) if coordinator else None
+        if user is None:
+            return False, "user_missing"
+        return await coordinator.async_assign_measurement(measurement_id, user)
+
+    async def async_step_assign_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick an unknown measurement and the user it belongs to."""
+        coordinator = self._coordinator()
+        pending = coordinator.unknown_records() if coordinator is not None else []
+        errors: dict[str, str] = {}
+
+        if user_input is not None and not pending:
+            # Informational form was dismissed; nothing left to assign.
+            return await self.async_step_init()
+
+        if user_input is not None:
+            done, message = await self._assign_via_form(
+                coordinator,
+                user_input[FIELD_MEASUREMENT_ID],
+                user_input[FIELD_USER],
+            )
+            if not done:
+                errors["base"] = message
+            else:
+                return await self.async_step_init()
+
+        if not pending:
+            return self.async_show_form(
+                step_id="assign_pick",
+                data_schema=vol.Schema({}),
+                description_placeholders={"pending": "0"},
+            )
+
+        choices = {
+            record[FIELD_MEASUREMENT_ID]: display_label(record)
+            for record in pending
+        }
+        user_options = _user_choices(self._users_or_default())
+        user_options[FIELD_KEEP_UNASSIGNED] = "Keep unassigned"
+        return self.async_show_form(
+            step_id="assign_pick",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(FIELD_MEASUREMENT_ID): vol.In(choices),
+                    vol.Required(FIELD_USER): vol.In(user_options),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"pending": str(len(pending))},
+        )
+
+    async def async_step_reassign_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick a recent assigned measurement and move it to another user."""
+        coordinator = self._coordinator()
+        assigned = (
+            coordinator.assigned_records(25) if coordinator is not None else []
+        )
+        errors: dict[str, str] = {}
+
+        if user_input is not None and not assigned:
+            return await self.async_step_init()
+
+        if user_input is not None:
+            done, message = await self._assign_via_form(
+                coordinator,
+                user_input[FIELD_MEASUREMENT_ID],
+                user_input[FIELD_USER],
+            )
+            if not done:
+                errors["base"] = message
+            else:
+                return await self.async_step_init()
+
+        if not assigned:
+            return self.async_show_form(
+                step_id="reassign_pick",
+                data_schema=vol.Schema({}),
+                description_placeholders={"count": "0"},
+            )
+
+        def _label(record: dict[str, Any]) -> str:
+            owner = record.get("user_name") or "unknown"
+            return f"{display_label(record)} - currently {owner}"
+
+        choices = {
+            record[FIELD_MEASUREMENT_ID]: _label(record)
+            for record in assigned
+        }
+        return self.async_show_form(
+            step_id="reassign_pick",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(FIELD_MEASUREMENT_ID): vol.In(choices),
+                    vol.Required(FIELD_USER): vol.In(
+                        _user_choices(self._users_or_default())
+                    ),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"count": str(len(assigned))},
+        )
+
+    # -- commit ------------------------------------------------------------
+
+    async def async_step_save_close(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Commit changes (reloads the entry through the update listener)."""
+        users = self._users_or_default()
+        coordinator = self._coordinator()
+        if coordinator is not None and self._removed_user_ids:
+            for user_id in self._removed_user_ids:
+                await coordinator.async_drop_user_records(user_id)
+
+        return self.async_create_entry(
+            title="",
+            data=build_user_options(
+                users,
+                self._active_user_id,
+                self._tolerance_kg,
+                self._impedance_tol_ohm,
+            ),
         )

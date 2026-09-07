@@ -33,9 +33,23 @@ MEASUREMENT_MIN_SIZE: Final = 19
 # --- Config entry keys ---
 CONF_ADDRESS: Final = "address"
 CONF_NAME: Final = "name"
-CONF_USER_NAME: Final = "user_name"
+
+# Multi-user options keys.  Each user is a dict of the CONF_* profile keys
+# below plus a stable CONF_USER_ID.  ``users`` is a list of those dicts.
+CONF_USERS: Final = "users"
+CONF_USER_ID: Final = "user_id"
+CONF_ACTIVE_USER_ID: Final = "active_user_id"
+# Auto-assignment weight tolerance in kg; 0 disables auto-assignment.
+CONF_AUTO_ASSIGN_KG: Final = "auto_assign_kg"
+DEFAULT_AUTO_ASSIGN_KG: Final = 3.0
+# Impedance tolerance in Ohm used to tell same-weight users apart;
+# 0 disables the impedance gate (weight-only matching).
+CONF_IMPEDANCE_TOL_OHM: Final = "impedance_tol_ohm"
+DEFAULT_IMPEDANCE_TOL_OHM: Final = 60.0
+LEGACY_USER_ID: Final = "default"  # id used when migrating single-profile entries
 
 # User profile keys
+CONF_USER_NAME: Final = "user_name"
 CONF_SEX: Final = "sex"            # "male" | "female"
 CONF_AGE: Final = "age"            # years (int)
 CONF_HEIGHT: Final = "height"      # cm (float)
@@ -72,8 +86,24 @@ MAX_WEIGHT_KG: Final = 300.0
 # --- Events ---
 EVENT_MEASUREMENT: Final = "realme_scale_measurement"
 
+# Measurement record status values
+STATUS_ASSIGNED: Final = "assigned"
+STATUS_UNKNOWN: Final = "unknown"
+
 # --- Services ---
 SERVICE_RECONNECT: Final = "reconnect"
+SERVICE_ASSIGN_MEASUREMENT: Final = "assign_measurement"
+
+# Service / event field names
+FIELD_MEASUREMENT_ID: Final = "measurement_id"
+FIELD_USER: Final = "user"
+FIELD_USER_ID: Final = "user_id"
+FIELD_STATUS: Final = "status"
+
+# --- Persistent measurement store ---
+STORE_VERSION: Final = 1
+STORE_MAX_ASSIGNED: Final = 200   # keep this many most-recent assigned records
+STORE_MAX_UNKNOWN: Final = 50     # keep this many unassigned records
 
 # --- Sensor helpers ---
 ATTR_MEASUREMENT_TIME: Final = "measurement_time"

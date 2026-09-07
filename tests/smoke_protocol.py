@@ -15,6 +15,9 @@ _realme.__path__ = [str(root / "custom_components" / "realme_scale")]
 _realme.__package__ = "custom_components.realme_scale"
 sys.modules["custom_components.realme_scale"] = _realme
 
+from datetime import UTC, datetime
+
+from custom_components.realme_scale.bia import YunmaiBia
 from custom_components.realme_scale.scale_controller import (
     ScaleUser,
     build_handshake,
@@ -23,8 +26,6 @@ from custom_components.realme_scale.scale_controller import (
     obfuscate,
     parse_measurement,
 )
-from custom_components.realme_scale.bia import YunmaiBia
-from datetime import UTC, datetime
 
 MAC = "AA:BB:CC:DD:EE:FF"
 MAC_BYTES = bytes((0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF))

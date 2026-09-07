@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CI: GitHub Actions workflow runs the pure-python test suite on push/PR.
+- **Multi-user support**: every scale entry now holds a *list* of user
+  profiles; users can be added / edited / removed after install from a
+  menu-driven options flow.
+- **One HA device per user**: each user's latest attributed measurement is
+  exposed as its own device with the full sensor set.
+- **Active-user select entity** plus options action to pick which profile
+  is written into the scale handshake (reconnects to apply).
+- **Two-signal auto-attribution** (weight + impedance fingerprints, both
+  with configurable tolerances): measurements are matched to the user whose
+  last reading is consistent with the new one.
+- **Confirm-before-assign semantics**: readings that match nobody - or match
+  several users - are *not* silently attributed; they stay unassigned and
+  the event reports `candidate_users` (nearest first) for a confirm prompt.
+- **Persistent measurement store** (per entry): every packet is recorded
+  with a `measurement_id`; the bounded unassigned queue survives restarts.
+- **Assign unassigned measurements to a user later** from *Options →
+  Assign unassigned measurements* or via the new
+  `realme_scale.assign_measurement` service; BIA figures are recomputed
+  under the assigned user's profile.
+- **Reassign already-assigned records** (Options → Reassign a recent
+  measurement, or the same service) to fix wrong auto-assignments; the
+  affected users' "latest" sensors are refreshed from the store.
+- `realme_scale_measurement` events now carry `measurement_id` and
+  `status` (`assigned` | `unknown`), plus `candidate_users` for ambiguous
+  readings.
+- README: per-user dashboard guide with example YAML and entity ids.
+- Unit tests for attribution, record serialization and user-options
+  parsing/migration (`tests/test_assignment.py`, `test_records.py`,
+  `test_options.py`).
+
+### Changed
+- Old single-profile entries migrate transparently: the flat profile
+  becomes a one-user registry with the legacy user id.
+- Sensor unique ids are now user-scoped
+  (`<unique>_user_<user_id>_<metric>`). After upgrading, previously
+  configured sensors appear as separate per-user entities; orphaned
+  v0.1 entities may need to be removed from the entity registry.
 
 ## [0.1.1] - 2026-02-09
 

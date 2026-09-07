@@ -23,11 +23,28 @@ from __future__ import annotations
 
 import math
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from .bia import YunmaiBia
 from .const import (
+    ACTIVITY_LEVELS,
+    CONF_ACTIVE_USER_ID,
+    CONF_ACTIVITY_LEVEL,
+    CONF_AGE,
+    CONF_AUTO_ASSIGN_KG,
+    CONF_HEIGHT,
+    CONF_IMPEDANCE_TOL_OHM,
+    CONF_INITIAL_WEIGHT,
+    CONF_SEX,
+    CONF_USER_ID,
+    CONF_USER_NAME,
+    CONF_USERS,
+    DEFAULT_AUTO_ASSIGN_KG,
+    DEFAULT_IMPEDANCE_TOL_OHM,
+    LEGACY_USER_ID,
     MAX_WEIGHT_KG,
     MEASUREMENT_HEADER,
     MEASUREMENT_LENGTH,
@@ -73,8 +90,13 @@ def _deobfuscate(data: bytes, mac: bytes) -> bytes:
 
 @dataclass
 class ScaleUser:
-    """A user profile, mirroring openScale's ScaleUser fields."""
+    """A user profile, mirroring openScale's ScaleUser fields.
 
+    ``user_id`` is a stable string that identifies the user within one
+    config entry (used for attribution, device ids and storage keys).
+    """
+
+    user_id: str = ""
     name: str = ""
     sex: str = SEX_MALE            # "male" | "female"
     age: int = 30
@@ -90,9 +112,131 @@ class ScaleUser:
         return 1 if self.is_male() else 0
 
 
+# --------------------------------------------------------------------------
+# User profile <-> stored options helpers
+# --------------------------------------------------------------------------
+
+
+def _safe_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_str(value: Any, default: str) -> str:
+    try:
+        return str(value) if value not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _valid_activity(value: str) -> str:
+    return value if value in ACTIVITY_LEVELS else "moderate"
+
+
+def scale_user_from_profile(values: Mapping[str, Any]) -> ScaleUser:
+    """Build a ScaleUser from a stored profile dict (any key subset ok)."""
+    return ScaleUser(
+        user_id=_safe_str(values.get(CONF_USER_ID), ""),
+        name=_safe_str(values.get(CONF_USER_NAME), ""),
+        sex=_safe_str(values.get(CONF_SEX), SEX_MALE),
+        age=_safe_int(values.get(CONF_AGE), 30),
+        height_cm=_safe_float(values.get(CONF_HEIGHT), 175.0),
+        activity_level=_valid_activity(
+            _safe_str(values.get(CONF_ACTIVITY_LEVEL), "moderate")
+        ),
+        initial_weight=_safe_float(values.get(CONF_INITIAL_WEIGHT), 0.0),
+    )
+
+
+def _valid_activity(value: str) -> str:
+    return value if value in ACTIVITY_LEVELS else "moderate"
+
+
+def scale_user_to_profile(user: ScaleUser) -> dict[str, Any]:
+    """Serialize a ScaleUser into the canonical stored profile dict."""
+    return {
+        CONF_USER_ID: user.user_id,
+        CONF_USER_NAME: user.name,
+        CONF_SEX: user.sex,
+        CONF_AGE: user.age,
+        CONF_HEIGHT: user.height_cm,
+        CONF_ACTIVITY_LEVEL: user.activity_level,
+        CONF_INITIAL_WEIGHT: user.initial_weight,
+    }
+
+
+def parse_user_options(
+    options: Mapping[str, Any],
+) -> tuple[list[ScaleUser], str | None, float, float]:
+    """Decode entry.options into (users, active id, weight tol, impedance tol).
+
+    Migrates a legacy single-profile entry (flat CONF_* keys, as shipped in
+    v0.1.x) into a one-user list so old installs keep working unchanged.
+    """
+    users_raw = options.get(CONF_USERS)
+    if isinstance(users_raw, list) and users_raw:
+        users: list[ScaleUser] = []
+        for raw in users_raw:
+            if not isinstance(raw, dict):
+                continue
+            user = scale_user_from_profile(raw)
+            if not user.user_id:
+                continue
+            users.append(user)
+    else:
+        # Legacy flat profile -> a single user with the stable legacy id.
+        profile = {key: options.get(key) for key in (
+            CONF_USER_NAME, CONF_SEX, CONF_AGE, CONF_HEIGHT,
+            CONF_ACTIVITY_LEVEL, CONF_INITIAL_WEIGHT,
+        )}
+        profile[CONF_USER_ID] = LEGACY_USER_ID
+        users = [scale_user_from_profile(profile)]
+
+    if not users:
+        users = [ScaleUser(user_id=LEGACY_USER_ID)]
+
+    active_user_id = _safe_str(options.get(CONF_ACTIVE_USER_ID), "")
+    known_ids = {user.user_id for user in users}
+    if active_user_id not in known_ids:
+        active_user_id = users[0].user_id
+    tolerance = _safe_float(options.get(CONF_AUTO_ASSIGN_KG), DEFAULT_AUTO_ASSIGN_KG)
+    impedance_tol = _safe_float(
+        options.get(CONF_IMPEDANCE_TOL_OHM), DEFAULT_IMPEDANCE_TOL_OHM
+    )
+    return users, active_user_id, tolerance, impedance_tol
+
+
+def build_user_options(
+    users: list[ScaleUser],
+    active_user_id: str | None,
+    tolerance_kg: float,
+    impedance_tol_ohm: float | None = None,
+) -> dict[str, Any]:
+    """Serialize (users, active user, tolerances) into entry.options."""
+    return {
+        CONF_USERS: [scale_user_to_profile(user) for user in users],
+        CONF_ACTIVE_USER_ID: active_user_id or (users[0].user_id if users else ""),
+        CONF_AUTO_ASSIGN_KG: float(tolerance_kg),
+        CONF_IMPEDANCE_TOL_OHM: float(
+            impedance_tol_ohm
+            if impedance_tol_ohm is not None
+            else DEFAULT_IMPEDANCE_TOL_OHM
+        ),
+    }
+
+
 def _kotlin_round(value: float) -> int:
     """Kotlin ``roundToInt()``: Math.round -> floor(x + 0.5) for x >= 0."""
-    return int(math.floor(value + 0.5))
+    return math.floor(value + 0.5)
 
 
 # --------------------------------------------------------------------------
@@ -151,12 +295,35 @@ def build_handshake(user: ScaleUser, mac: bytes, now: int | None = None,
 
 
 @dataclass
+class DecodedMeasurement:
+    """Raw, user-agnostic values decoded from a scale packet.
+
+    Attribution to a user happens *after* decoding (the scale never tells
+    us who is standing on it), so the coordinator can pick the right
+    profile before any body-composition math runs.
+    """
+
+    weight_kg: float
+    scale_time_epoch: int          # 0 when the scale sent no timestamp
+    measured_at: datetime
+    impedance: int | None = None   # Ohms; None when the scale sent none
+    raw: bytes = field(default=b"", repr=False)
+
+
+@dataclass
 class ScaleMeasurement:
     """A parsed live measurement (values as reported / locally derived)."""
 
     weight_kg: float
     measured_at: datetime            # timestamp from the scale when present
     impedance: int | None = None     # Ohms; None when the scale sent none
+
+    # Attribution (set by the coordinator, not by packet parsing).
+    user_id: str | None = None
+    user_name: str | None = None
+    # Plausible owners when the reading was ambiguous (nearest first).
+    # Only meaningful while the measurement is unassigned.
+    candidate_user_ids: tuple[str, ...] | None = None
 
     # Locally derived body-composition metrics (percent / kg / index).
     # Only filled in when impedance > 0 produced a plausible fat estimate.
@@ -178,11 +345,11 @@ def is_measurement_packet(data: bytes) -> bool:
     )
 
 
-def parse_measurement(data: bytes, mac: bytes, user: ScaleUser) -> ScaleMeasurement | None:
-    """Parse and decrypt one 0xA621 measurement notification.
+def decode_measurement(data: bytes, mac: bytes) -> DecodedMeasurement | None:
+    """Decrypt and decode one 0xA621 notification (no user involved).
 
-    Returns ``None`` for an out-of-range weight (same sanity gate as
-    openScale: 0.5 < weight <= 300 kg).
+    Returns ``None`` for a non-measurement packet or an out-of-range weight
+    (same sanity gate as openScale: 0.5 < weight <= 300 kg).
     """
     if not is_measurement_packet(data):
         return None
@@ -209,24 +376,69 @@ def parse_measurement(data: bytes, mac: bytes, user: ScaleUser) -> ScaleMeasurem
         else datetime.now(tz=UTC)
     )
 
-    measurement = ScaleMeasurement(
+    return DecodedMeasurement(
         weight_kg=weight_kg,
+        scale_time_epoch=scale_time,
         measured_at=measured_at,
         impedance=impedance if impedance > 0 else None,
         raw=data,
     )
 
-    if impedance > 0:
-        calc = YunmaiBia(user.sex_int(), user.height_cm, user.activity_level)
-        fat_pct = calc.get_fat(user.age, weight_kg, impedance)
-        if fat_pct > 0.0:
-            muscle_pct = calc.get_muscle(fat_pct) / weight_kg * 100.0
-            measurement.body_fat = fat_pct
-            measurement.muscle = muscle_pct
-            measurement.water = calc.get_water(fat_pct)
-            # Kotlin feeds the *stored* MUSCLE value into the bone formula.
-            measurement.bone_kg = calc.get_bone_mass(muscle_pct, weight_kg)
-            measurement.lean_body_mass_kg = calc.get_lean_body_mass(weight_kg, fat_pct)
-            measurement.visceral_fat = calc.get_visceral_fat(fat_pct, user.age)
 
+def compute_body_composition(
+    user: ScaleUser, weight_kg: float, impedance: int | None
+) -> tuple[float, float, float, float, float, float] | None:
+    """Derive body-composition figures from weight + impedance + profile.
+
+    Returns ``(body_fat, muscle, water, bone_kg, lean_body_mass_kg,
+    visceral_fat)`` or ``None`` when impedance is missing / implausible.
+    Mirrors the Kotlin Realme handler, including feeding the stored MUSCLE
+    value back into the bone-mass formula.
+    """
+    if not impedance or impedance <= 0:
+        return None
+
+    calc = YunmaiBia(user.sex_int(), user.height_cm, user.activity_level)
+    fat_pct = calc.get_fat(user.age, weight_kg, impedance)
+    if fat_pct <= 0.0:
+        return None
+
+    muscle_pct = calc.get_muscle(fat_pct) / weight_kg * 100.0
+    return (
+        fat_pct,
+        muscle_pct,
+        calc.get_water(fat_pct),
+        calc.get_bone_mass(muscle_pct, weight_kg),
+        calc.get_lean_body_mass(weight_kg, fat_pct),
+        calc.get_visceral_fat(fat_pct, user.age),
+    )
+
+
+def parse_measurement(data: bytes, mac: bytes, user: ScaleUser) -> ScaleMeasurement | None:
+    """Parse and decrypt one 0xA621 notification, attributed to ``user``.
+
+    Kept for API compatibility with earlier versions / tests: decode the
+    packet, then immediately compute body composition under ``user``.
+    Returns ``None`` for a packet the sanity gates reject.
+    """
+    decoded = decode_measurement(data, mac)
+    if decoded is None:
+        return None
+
+    measurement = ScaleMeasurement(
+        weight_kg=decoded.weight_kg,
+        measured_at=decoded.measured_at,
+        impedance=decoded.impedance,
+        raw=decoded.raw,
+    )
+    metrics = compute_body_composition(user, decoded.weight_kg, decoded.impedance)
+    if metrics is not None:
+        (
+            measurement.body_fat,
+            measurement.muscle,
+            measurement.water,
+            measurement.bone_kg,
+            measurement.lean_body_mass_kg,
+            measurement.visceral_fat,
+        ) = metrics
     return measurement

@@ -11,8 +11,8 @@
         }
       },
       "profile": {
-        "title": "User profile",
-        "description": "The scale uses these settings for the measurement handshake and body-composition calculations.",
+        "title": "First user",
+        "description": "Add the first user. The scale uses this profile for the connection handshake and body-composition calculations. More users can be added later from the integration options.",
         "data": {
           "user_name": "User name",
           "sex": "Sex",
@@ -26,13 +26,29 @@
     "abort": {
       "already_configured": "This scale is already configured.",
       "not_supported": "This device does not look like a Realme Smart Scale."
+    },
+    "error": {
+      "name_required": "Please enter a user name."
     }
   },
   "options": {
     "step": {
-      "init": {
-        "title": "User profile",
-        "description": "Update the user profile used for the measurement handshake and body-composition calculations.",
+      "menu": {
+        "title": "Users & measurements",
+        "description": "{count} user(s) configured - {pending} unassigned measurement(s). Choose what you want to do. Changes are applied when you pick \"Save and close\".",
+        "menu_options": {
+          "add_user": "Add a user",
+          "edit_user": "Edit a user",
+          "remove_user": "Remove a user",
+          "active_user": "Choose active user (handshake profile)",
+          "settings": "Auto-assignment settings",
+          "assign_unknown": "Assign unassigned measurements to a user",
+          "reassign_measurement": "Reassign a recent measurement to another user",
+          "save_close": "Save and close"
+        }
+      },
+      "add_user": {
+        "title": "Add a user",
         "data": {
           "user_name": "User name",
           "sex": "Sex",
@@ -41,7 +57,71 @@
           "activity_level": "Activity level",
           "initial_weight": "Initial weight (kg, 0 = new user)"
         }
+      },
+      "edit_user": {
+        "title": "Edit a user",
+        "description": "Pick the user to edit.",
+        "data": {
+          "user": "User"
+        }
+      },
+      "edit_user_form": {
+        "title": "Edit {user}",
+        "data": {
+          "user_name": "User name",
+          "sex": "Sex",
+          "age": "Age",
+          "height": "Height (cm)",
+          "activity_level": "Activity level",
+          "initial_weight": "Initial weight (kg, 0 = new user)"
+        }
+      },
+      "remove_user": {
+        "title": "Remove a user",
+        "description": "Removing a user also deletes their stored measurements.",
+        "data": {
+          "user": "User"
+        }
+      },
+      "active_user": {
+        "title": "Active user",
+        "description": "The active user's profile is sent to the scale when it connects. Currently: {active}.",
+        "data": {
+          "user": "User"
+        }
+      },
+      "settings": {
+        "title": "Auto-assignment",
+        "description": "A measurement is given to a user when their last reading is within the weight tolerance (kg) and, when both readings carry impedance, within the impedance tolerance (Ohm). A reading matching no one - or matching several people - stays unassigned until you confirm it. 0 disables an axis.",
+        "data": {
+          "auto_assign_kg": "Weight tolerance (kg)",
+          "impedance_tol_ohm": "Impedance tolerance (Ohm)"
+        }
+      },
+      "assign_pick": {
+        "title": "Assign measurement",
+        "description": "{pending} measurement(s) waiting. Pick one and tell it which user it belongs to.",
+        "data": {
+          "measurement_id": "Measurement",
+          "user": "Assign to user"
+        }
+      },
+      "reassign_pick": {
+        "title": "Reassign measurement",
+        "description": "The {count} most recent measurements are listed with their current owner. Pick one and choose the user it actually belongs to - its body-composition values are recalculated for that user.",
+        "data": {
+          "measurement_id": "Measurement",
+          "user": "Reassign to user"
+        }
+      },
+      "save_close": {
+        "title": "Save and close"
       }
+    },
+    "error": {
+      "name_required": "Please enter a user name.",
+      "last_user": "At least one user must remain on this scale.",
+      "user_missing": "That measurement is no longer available (it may already have been assigned)."
     }
   },
   "exceptions": {
