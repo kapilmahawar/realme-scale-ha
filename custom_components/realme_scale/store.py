@@ -14,13 +14,12 @@ from homeassistant.helpers import storage
 
 from .const import (
     DOMAIN,
+    FIELD_MEASUREMENT_ID,
     STORE_MAX_ASSIGNED,
     STORE_MAX_UNKNOWN,
     STORE_VERSION,
 )
-from .records import FIELD_MEASUREMENT_ID
 
-# records.py keeps the schema; only the id field name is needed here.
 __all__ = ["MeasurementStore"]
 
 
