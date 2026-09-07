@@ -28,7 +28,8 @@
       "not_supported": "This device does not look like a Realme Smart Scale."
     },
     "error": {
-      "name_required": "Please enter a user name."
+      "name_required": "Please enter a user name.",
+      "invalid_mac": "Enter the scale's Bluetooth MAC address in the form XX:XX:XX:XX:XX:XX."
     }
   },
   "options": {

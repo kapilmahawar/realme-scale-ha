@@ -15,10 +15,10 @@ specific user from a list.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from uuid import uuid4
 
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
@@ -211,59 +211,80 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         return await self.async_step_profile()
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Handle a flow initiated by the user (manual fallback)."""
-        # Offer discovered devices when available, otherwise let the user
-        # type the MAC (e.g. the scale is asleep / out of advertising range).
-        discovered = _discovered_devices(self.hass)
-        discovered_by_address = {
-            discovery.address.upper(): discovery for discovery in discovered
-        }
+# MAC address pattern for the manual fallback entry.  Validated in code:
+# newer Home Assistant versions cannot serialize arbitrary callable schema
+# validators (e.g. matches_regex) into the frontend field list.
+MAC_PATTERN = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 
-        if user_input is not None:
-            address = user_input[CONF_ADDRESS].strip().upper()
-            await self.async_set_unique_id(address)
-            self._abort_if_unique_id_configured()
-            self._address = address
-            if address in discovered_by_address:
-                self._name = discovered_by_address[address].name or DEFAULT_NAME
-            else:
-                self._name = user_input.get(CONF_NAME, DEFAULT_NAME)
-            return await self.async_step_profile()
 
-        if discovered:
-            schema = vol.Schema(
-                {
-                    vol.Required(CONF_ADDRESS): vol.In(
-                        {
-                            discovery.address.upper(): (
-                                f"{discovery.name} ({discovery.address})"
-                            )
-                            for discovery in discovered
-                        }
-                    ),
-                }
-            )
-        else:
-            schema = vol.Schema(
-                {
-                    vol.Required(CONF_ADDRESS): cv.matches_regex(
-                        r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
-                    ),
-                    vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
-                }
-            )
+def _user_step_schema(discovered: list[BluetoothServiceInfoBleak]) -> vol.Schema:
+    """Schema for the address step: dropdown when devices are known.
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=schema,
-            description_placeholders={
-                "found": str(len(discovered)),
-                "name": DEFAULT_NAME,
-            },
+    Otherwise a plain text field; the MAC format is validated in code so the
+    schema stays serializable on every Home Assistant version.
+    """
+    if discovered:
+        return vol.Schema(
+            {
+                vol.Required(CONF_ADDRESS): vol.In(
+                    {
+                        discovery.address.upper(): (
+                            f"{discovery.name} ({discovery.address})"
+                        )
+                        for discovery in discovered
+                    }
+                ),
+            }
         )
+    return vol.Schema(
+        {
+            vol.Required(CONF_ADDRESS): str,
+            vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+        }
+    )
+
+
+async def async_step_user(
+    self, user_input: dict[str, Any] | None = None
+) -> ConfigFlowResult:
+    """Handle a flow initiated by the user (manual fallback)."""
+    # Offer discovered devices when available, otherwise let the user
+    # type the MAC (e.g. the scale is asleep / out of advertising range).
+    discovered = _discovered_devices(self.hass)
+    discovered_by_address = {
+        discovery.address.upper(): discovery for discovery in discovered
+    }
+
+    if user_input is not None:
+        raw_address = str(user_input[CONF_ADDRESS]).strip()
+        address = raw_address.upper()
+        if not MAC_PATTERN.fullmatch(raw_address):
+            return self.async_show_form(
+                step_id="user",
+                data_schema=_user_step_schema(discovered),
+                errors={CONF_ADDRESS: "invalid_mac"},
+                description_placeholders={
+                    "found": str(len(discovered)),
+                    "name": DEFAULT_NAME,
+                },
+            )
+        await self.async_set_unique_id(address)
+        self._abort_if_unique_id_configured()
+        self._address = address
+        if address in discovered_by_address:
+            self._name = discovered_by_address[address].name or DEFAULT_NAME
+        else:
+            self._name = user_input.get(CONF_NAME, DEFAULT_NAME)
+        return await self.async_step_profile()
+
+    return self.async_show_form(
+        step_id="user",
+        data_schema=_user_step_schema(discovered),
+        description_placeholders={
+            "found": str(len(discovered)),
+            "name": DEFAULT_NAME,
+        },
+    )
 
     async def async_step_profile(
         self, user_input: dict[str, Any] | None = None
