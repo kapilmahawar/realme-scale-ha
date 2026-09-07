@@ -46,10 +46,8 @@ def test_handshake_structure_and_roundtrip() -> None:
         # Wire format: 0x10 header, length byte, XOR-obfuscated payload.
         assert cmd[0] == 0x10
         assert cmd[1] == len(cmd) - 2
-        # Payload round-trips through the MAC cipher.
-        assert obfuscate(cmd[2:], MAC_BYTES) == obfuscate(
-            obfuscate(cmd[2:], MAC_BYTES), MAC_BYTES
-        )
+        # XOR is an involution: double-encryption restores the body.
+        assert obfuscate(obfuscate(cmd[2:], MAC_BYTES), MAC_BYTES) == cmd[2:]
 
 
 def test_handshake_deterministic_given_clock() -> None:

@@ -58,6 +58,13 @@ talks to an actively connected GATT client, so:
 5. Change the profile later via the entry's **Options** (applies to the next
    connection / measurement).
 
+### HACS
+
+The repository ships with `hacs.json`, so it can be added as a custom
+repository in HACS (Settings → HACS → ⋮ → Custom repositories →
+`https://github.com/kapilmahawar/realme-scale-ha`, category *Integration*)
+and installed from there. Manual installation (above) works identically.
+
 ## Entities
 
 Sensors (all on one device):
@@ -122,6 +129,9 @@ without any Home Assistant / Bluetooth hardware:
 ```bash
 python -m pytest tests/ -v
 ```
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the same suite on
+every push/PR against Python 3.11 and 3.12.
 
 Suggested on-device bring-up checklist:
 1. Confirm the scale shows as *connectable* in HA Bluetooth settings while

@@ -23,8 +23,9 @@ def test_female_fat_higher_than_male() -> None:
 
 def test_out_of_band_fat_returns_zero() -> None:
     calc = YunmaiBia(sex=1, height_cm=175.0, activity_level="sedentary")
-    # Extremely high resistance -> implausible result -> guarded to 0.
-    assert calc.get_fat(age=30, weight=75.0, resistance=5000) == 0.0
+    # A huge resistance pushes the fat estimate above the 75 % ceiling,
+    # which the Yunmai formula guards by returning 0.0.
+    assert calc.get_fat(age=30, weight=75.0, resistance=400_000) == 0.0
 
 
 def test_water_and_muscle_are_percent_bounded() -> None:
