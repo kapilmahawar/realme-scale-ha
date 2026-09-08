@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Repository branding: realme logo added as `icon.png`/`logo.png`.
+- README: AI-use disclosure and contributor credits (DeepSeek).
+
 ## [0.4.0] - 2026-09-07
 
 ### Added

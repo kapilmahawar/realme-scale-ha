@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon.png" alt="realme logo" width="96" />
+</p>
+
 # Realme Smart Scale (RMH2011) — Home Assistant integration
 
 A Home Assistant **custom integration** that reads the **Realme Smart Scale
@@ -346,6 +350,21 @@ Suggested on-device bring-up checklist:
 4. Compare `body_fat`/`water` with the realme Link / openScale app. If BIA
    figures are off, sanity-check the profile (especially height and
    activity level) — the math mirrors openScale exactly.
+
+## AI assistance & contributors
+
+> 🤖 **AI-use disclosure:** This project is developed with the assistance of
+> AI tools — including **DeepSeek** — which contribute to code, unit tests
+> and documentation. All AI-generated work is reviewed, tested and accepted
+> by the repository owner before it is merged; the owner remains responsible
+> for the content of this project.
+
+- **Alice Mahawar** — project owner and maintainer.
+- **DeepSeek (AI assistant)** — development, testing and documentation
+  support (see disclosure above).
+
+> ℹ️ GitHub's contributor graph reflects commit *authorship* (which runs
+> under the owner's account), so the list above is the authoritative credit.
 
 ## License / attribution
 
