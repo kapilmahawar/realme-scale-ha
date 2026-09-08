@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-08
+
+### Fixed
+- **Save & Close "a coroutine was expected, got None"**: the config-entry
+  options update listener `_async_options_updated` was a synchronous
+  `@callback` function returning `None`, but HA awaits the listener. It is
+  now an `async def` that directly `await`s `config_entries.async_reload`
+  (no `async_create_task`), keeping the no-change/no-coordinator early
+  returns. `@callback` remains only where it is actually used
+  (`_register_services_once`).
+
 ## [0.6.2] - 2026-09-08
 
 ### Fixed

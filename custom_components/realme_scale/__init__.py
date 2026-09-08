@@ -97,20 +97,27 @@ async def async_setup_entry(
     return True
 
 
-@callback
-def _async_options_updated(
+async def _async_options_updated(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> None:
-    """Reload an entry whose stored options changed (users/settings)."""
+    """Reload an entry whose stored options changed (users/settings).
+
+    The config-entry update listener awaits this coroutine, so it must be an
+    ``async def`` (a sync function returning ``None`` produced the
+    "a coroutine was expected, got None" error on save).
+    """
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if coordinator is None:
         return
+
     if dict(entry.options) == coordinator._options_snapshot:
         return  # Options flow round-trip with no actual change.
-    _LOGGER.debug("Realme Smart Scale options changed; reloading %s", entry.title)
-    hass.async_create_task(
-        hass.config_entries.async_reload(entry.entry_id)
+
+    _LOGGER.debug(
+        "Realme Smart Scale options changed; reloading %s",
+        entry.title,
     )
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 @callback

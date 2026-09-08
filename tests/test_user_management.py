@@ -27,6 +27,7 @@ from custom_components.realme_scale.scale_controller import (
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONFIG_FLOW = ROOT / "custom_components" / "realme_scale" / "config_flow.py"
+INIT_FILE = ROOT / "custom_components" / "realme_scale" / "__init__.py"
 STRINGS = ROOT / "custom_components" / "realme_scale" / "strings.json"
 EN = ROOT / "custom_components" / "realme_scale" / "translations" / "en.json"
 
@@ -162,6 +163,50 @@ def test_menu_translations_snapshot_unchanged() -> None:
         data = json.loads(language_file.read_text(encoding="utf-8"))
         menu_options = data["options"]["step"]["menu"]["menu_options"]
         assert menu_options == expected, language_file.name
+
+
+def _options_updated_node() -> ast.AsyncFunctionDef | None:
+    tree = ast.parse(INIT_FILE.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if getattr(node, "name", None) == "_async_options_updated":
+            return node
+    return None
+
+
+def test_options_update_listener_is_async_and_awaits_reload() -> None:
+    """BUG (0.6.2): listener must be a coroutine awaiting async_reload."""
+    node = _options_updated_node()
+    assert node is not None, "_async_options_updated missing from __init__.py"
+    assert isinstance(node, ast.AsyncFunctionDef), "listener must be async def"
+    decorators = {
+        ast.unparse(d).split(".")[-1] for d in node.decorator_list
+    }
+    assert "callback" not in decorators, "remove @callback from the listener"
+
+    body_text = ast.get_source_segment(
+        INIT_FILE.read_text(encoding="utf-8"), node
+    ) or ""
+    assert "async_reload(entry.entry_id)" in body_text
+    assert "await hass.config_entries.async_reload" in body_text
+    assert "async_create_task" not in body_text
+
+    # Early returns for no coordinator / no actual change come before reload.
+    order = body_text.index("async_reload")
+    assert body_text.index("coordinator is None") < order
+    assert body_text.index("_options_snapshot") < order
+
+
+def test_callback_import_still_used_elsewhere() -> None:
+    text = INIT_FILE.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    used = any(
+        ast.unparse(d).split(".")[-1] == "callback"
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for d in node.decorator_list
+    )
+    assert used, "@callback is still used (e.g. _register_services_once)"
+    assert "from homeassistant.core import HomeAssistant, ServiceCall, callback" in text
 
 
 def test_setup_entry_not_gated_on_ble_reachability() -> None:
