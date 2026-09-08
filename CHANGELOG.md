@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-07
+
 ### Changed
 - Repository branding: realme logo added as repo-root `icon.png`/`logo.png`
   (HACS) and as component brand assets
@@ -127,7 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.1...v0.3.0
 [0.1.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.0...v0.1.1
