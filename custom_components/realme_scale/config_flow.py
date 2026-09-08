@@ -366,13 +366,14 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     @staticmethod
-    async def async_get_options_flow(
+    def async_get_options_flow(
         config_entry: ConfigEntry,
     ) -> RealmeScaleOptionsFlow:
         """Return the options flow that manages users & measurements.
 
-        Without this hook Home Assistant does not expose the entry's
-        "Options" menu at all.
+        Note: despite the ``async_`` prefix this method is *synchronous* —
+        Home Assistant calls it directly and expects the flow instance, not a
+        coroutine (an async def here produces a 500 on opening Options).
         """
         return RealmeScaleOptionsFlow(config_entry)
 

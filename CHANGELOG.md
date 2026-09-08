@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-08
+
+### Fixed
+- **Opening entry Options returned "500 / Config flow could not be
+  loaded"**: `async_get_options_flow` was declared `async def`, but Home
+  Assistant invokes it synchronously and expects the flow instance; an
+  un-awaited coroutine caused the 500. The hook is now a plain
+  (non-async) static method, so the Users & measurements menu opens.
+
 ## [0.4.3] - 2026-09-08
 
 ### Fixed
@@ -149,7 +158,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.0...v0.4.1
