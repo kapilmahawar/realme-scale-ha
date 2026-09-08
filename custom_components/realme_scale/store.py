@@ -19,6 +19,7 @@ from .const import (
     STORE_MAX_UNKNOWN,
     STORE_VERSION,
 )
+from .records import records_without_user
 
 __all__ = ["MeasurementStore"]
 
@@ -97,19 +98,13 @@ class MeasurementStore:
         self._records = _prune(self._records)
         await self.async_save()
 
-    async def async_release_user(self, user_id: str) -> None:
-        """Unassign every record that belonged to a deleted user.
+    async def async_delete_user_records(self, user_id: str) -> None:
+        """Delete every stored record that belonged to ``user_id``.
 
-        History is preserved: records stay in the store but become
-        unassigned so they can be attributed to another user later.
+        Generic unassigned records (no owner) and other users' records are
+        untouched.  Idempotent: deleting an already-removed user is a no-op.
         """
-        changed = False
-        for record in self._records:
-            if record.get("user_id") != user_id:
-                continue
-            record["status"] = "unknown"
-            record.pop("user_id", None)
-            record.pop("user_name", None)
-            changed = True
-        if changed:
+        kept = records_without_user(self._records, user_id)
+        if len(kept) != len(self._records):
+            self._records = _prune(kept)
             await self.async_save()

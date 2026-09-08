@@ -342,3 +342,70 @@ def test_regression_journey_add_edit_remove_persist() -> None:
     assert active is None
     assert tolerance == DEFAULT_AUTO_ASSIGN_KG
     assert impedance == DEFAULT_IMPEDANCE_TOL_OHM
+
+
+COORDINATOR = ROOT / "custom_components" / "realme_scale" / "coordinator.py"
+STORE_FILE = ROOT / "custom_components" / "realme_scale" / "store.py"
+
+
+def _coordinator_method_source(name: str) -> str:
+    tree = ast.parse(COORDINATOR.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != "RealmeScaleCoordinator":
+            continue
+        for member in node.body:
+            if getattr(member, "name", None) == name:
+                return ast.get_source_segment(
+                    COORDINATOR.read_text(encoding="utf-8"), member
+                ) or ""
+    raise AssertionError(f"coordinator method {name} not found")
+
+
+def test_async_remove_user_performs_full_cleanup() -> None:
+    source = _coordinator_method_source("async_remove_user")
+    assert "async_delete_user_records(user_id)" in source
+    assert "_remove_user_from_registries(user_id)" in source
+    assert "latest_by_user.pop(user_id, None)" in source
+    assert "_identity_state.pop(user_id, None)" in source
+    assert "_user_by_id.pop(user_id, None)" in source
+    assert "self.users = [" in source  # runtime user list filtered
+
+
+def test_registry_cleanup_uses_supported_apis() -> None:
+    source = _coordinator_method_source("_remove_user_from_registries")
+    assert "device_registry as dr" in source
+    assert "entity_registry as er" in source
+    assert "ent_reg.async_remove(entity.entity_id)" in source
+    assert "dev_reg.async_remove_device(device.id)" in source
+    # Deletion is keyed on the stable per-user device identifier.
+    assert "_registry_device_for_user(user_id)" in source
+    identifier_source = _coordinator_method_source("_user_device_identifier")
+    assert 'f"{self.address}_{user_id}"' in identifier_source
+
+
+def test_deletion_never_runs_during_startup_or_reload() -> None:
+    """Deletion may only be triggered by the explicit Options-Flow action."""
+    coordinator = COORDINATOR.read_text(encoding="utf-8")
+    start = coordinator.index("    async def async_start")
+    shutdown = coordinator.index("    async def async_shutdown")
+    between = coordinator[start:shutdown]
+    assert "async_remove_user" not in between
+    assert "async_delete_user_records" not in between
+
+    config_flow = CONFIG_FLOW.read_text(encoding="utf-8")
+    save_close = config_flow.index("async_step_save_close")
+    tail = config_flow[save_close:]
+    # async_remove_user appears once (its invocation) in the save-close step.
+    assert tail.count("async_remove_user") == 1
+    # ... and the only other place is the coordinator definition itself.
+    assert coordinator.count("async_remove_user") == 1
+
+
+def test_persistent_storage_lives_outside_source_dir() -> None:
+    """Users/records use HA storage & entry options - never the code dir."""
+    store_source = STORE_FILE.read_text(encoding="utf-8")
+    assert "storage.Store(" in store_source  # writes to HA .storage, not repo
+    assert "custom_components" not in store_source
+    flow = CONFIG_FLOW.read_text(encoding="utf-8")
+    assert "self.config_entry.options" in flow
+    assert "build_user_options(" in flow

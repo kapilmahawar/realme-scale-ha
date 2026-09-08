@@ -820,14 +820,107 @@ class RealmeScaleCoordinator:
             ) = metrics
         return measurement
 
-    async def async_remove_user(self, user_id: str) -> None:
-        """Handle a user being deleted.
+    def _user_device_identifier(self, user_id: str) -> tuple[str, str]:
+        """Stable device-registry identifier of one user's virtual device.
 
-        The profile disappears (its "latest" and entities follow on reload),
-        but already-stored measurements are preserved: they become
-        unassigned records that can be attributed to a (new) user later.
+        Must mirror the identifier used when the user device is created
+        (``sensor.py``: (DOMAIN, f"{address}_{user_id}")).
         """
-        await self.store.async_release_user(user_id)
-        self._rebuild_identity()
+        return (DOMAIN, f"{self.address}_{user_id}")
+
+    def _registry_device_for_user(self, user_id: str):
+        """Find the user's virtual HA device (or ``None``)."""
+        from homeassistant.helpers import device_registry as dr
+
+        dev_reg = dr.async_get(self.hass)
+        identifier = self._user_device_identifier(user_id)
+        get_by_identifier = getattr(dev_reg, "async_get_device_by_identifier", None)
+        if get_by_identifier is not None:
+            try:
+                return get_by_identifier(identifier)
+            except TypeError:
+                pass  # fall through to the legacy lookup
+        return dev_reg.async_get_device({identifier})  # type: ignore[arg-type]
+
+    def _remove_user_from_registries(self, user_id: str) -> None:
+        """Remove the user's entities first, then their virtual device.
+
+        Only the device with the user's stable identifier is touched; the
+        physical scale device (address-based) and other users' devices stay.
+        Idempotent when the device/entities are already gone.
+        """
+        from homeassistant.helpers import (
+            device_registry as dr,
+        )
+        from homeassistant.helpers import (
+            entity_registry as er,
+        )
+
+        device = self._registry_device_for_user(user_id)
+        if device is None:
+            _LOGGER.debug("No device to remove for user %s", user_id)
+            return
+
+        ent_reg = er.async_get(self.hass)
+        try:
+            for entity in list(ent_reg.entities.values()):
+                if entity.device_id != device.id:
+                    continue
+                try:
+                    ent_reg.async_remove(entity.entity_id)
+                except Exception:  # noqa: BLE001 - per-entity best effort
+                    _LOGGER.warning(
+                        "Failed to remove entity %s for user %s",
+                        entity.entity_id,
+                        user_id,
+                    )
+        except Exception:
+            _LOGGER.exception("Failed to remove entities for user %s", user_id)
+
+        dev_reg = dr.async_get(self.hass)
+        try:
+            dev_reg.async_remove_device(device.id)
+        except Exception:  # noqa: BLE001 - already removed is expected
+            _LOGGER.debug("Device for user %s already removed", user_id)
+
+    async def async_remove_user(self, user_id: str) -> None:
+        """Completely delete one user (idempotent).
+
+        This is a *deliberate* deletion action: it is only invoked from the
+        Options Flow's Save & Close for users the user chose to remove.  It
+        is never called during setup/reload, so an integration update or a
+        restart can never erase users or their data.
+
+        Lifecycle (all keyed on the stable ``user_id``, never the name):
+
+        1. remove the user's HA entities (entity registry)
+        2. remove the user's virtual HA device (device registry)
+        3. delete the user's persisted measurement records
+        4. drop all runtime state (users, latest, identity, caches)
+
+        The physical scale device and every other user are untouched.
+        Works identically whether or not the user links a HA person.
+        """
+        self._remove_user_from_registries(user_id)
+
+        try:
+            await self.store.async_delete_user_records(user_id)
+        except Exception:
+            _LOGGER.exception(
+                "Failed to remove stored records for user %s", user_id
+            )
+
+        self.users = [user for user in self.users if user.user_id != user_id]
+        self._user_by_id.pop(user_id, None)
         self.latest_by_user.pop(user_id, None)
+        self._identity_state.pop(user_id, None)
+        if (
+            self.last_measurement is not None
+            and self.last_measurement.user_id == user_id
+        ):
+            self.last_measurement = None
+        if self.active_user_id == user_id:
+            self.active_user_id = self.users[0].user_id if self.users else None
+
         self._async_notify_listeners()
+        _LOGGER.info("Removed user %s (complete cleanup)", user_id)

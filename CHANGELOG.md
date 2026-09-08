@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-08
+
+### Changed
+- **Complete user deletion**: `coordinator.async_remove_user(user_id)`
+  (invoked only from Options → Remove User → Save & Close) now removes
+  everything belonging to the user, keyed on the stable `user_id`:
+  1. the user's HA entities (entity registry),
+  2. the user's virtual device (device registry, stable
+     `(DOMAIN, f"{address}_{user_id}")` identifier),
+  3. the user's persisted measurement records (store deletion),
+  4. all runtime state (`users`, `_user_by_id`, `latest_by_user`,
+     `_identity_state`, `last_measurement`, active fallback).
+
+  The physical scale device, other users, HA Person links and dashboard
+  configuration are never touched. Deletion is idempotent and works with
+  or without a Person link.
+- **Deletion only on explicit Options-Flow action**: setup/reload never
+  call the removal path, so HACS updates and restarts can never erase
+  users or data. Users live in `config_entry.options`; measurements live
+  in Home Assistant's `.storage` via `Store` (never the source directory).
+
+### Added
+- Regression tests: full-cleanup implementation, registry API usage,
+  deletion never invoked during startup/reload, save-close-only
+  invocation, and persistent-storage-outside-source-dir guarantees.
+
 ## [0.6.3] - 2026-09-08
 
 ### Fixed
@@ -278,7 +304,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.6.3...v0.7.0
+[0.6.3]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.6.2...v0.6.3
+[0.6.2]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.4...v0.5.0

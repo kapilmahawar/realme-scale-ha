@@ -118,3 +118,13 @@ def display_label(record: dict[str, Any]) -> str:
     weight = float(record.get("weight_kg", 0.0))
     time_part = when.strftime("%H:%M %d %b") if when else "?"
     return f"{time_part} - {weight:.1f} kg"
+
+
+def records_without_user(
+    records: list[dict[str, Any]], user_id: str
+) -> list[dict[str, Any]]:
+    """Records that do not belong to ``user_id`` (pure, for tests/storage).
+
+    Generic unassigned records (no user_id) are always kept.
+    """
+    return [r for r in records if r.get("user_id") != user_id]

@@ -829,12 +829,18 @@ class RealmeScaleOptionsFlow(OptionsFlow):
     async def async_step_save_close(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Commit changes (reloads the entry through the update listener)."""
+        """Commit changes (reloads the entry through the update listener).
+
+        User deletion runs ONLY here (an explicit Options-Flow action);
+        setup/reload never invokes it, so HACS updates and restarts can
+        never erase users or their data.
+        """
         users = self._users_or_default()
         coordinator = self._coordinator()
         if coordinator is not None and self._removed_user_ids:
             for user_id in self._removed_user_ids:
                 await coordinator.async_remove_user(user_id)
+            self._removed_user_ids.clear()
 
         return self.async_create_entry(
             title="",

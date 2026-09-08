@@ -9,6 +9,7 @@ from custom_components.realme_scale.records import (
     measurement_from_record,
     new_measurement_id,
     record_from_measurement,
+    records_without_user,
 )
 from custom_components.realme_scale.scale_controller import ScaleMeasurement
 
@@ -82,3 +83,31 @@ def test_display_label() -> None:
     )
     label = display_label(record)
     assert "75.2" in label
+
+
+def _record(measurement_id: str, user_id: str | None) -> dict:
+    return {"measurement_id": measurement_id, "user_id": user_id,
+            "status": "assigned" if user_id else "unknown", "weight_kg": 70.0}
+
+
+def test_records_without_user_removes_only_target_user() -> None:
+    records = [
+        _record("1", "u-a"),
+        _record("2", "u-b"),
+        _record("3", "u-a"),
+        _record("4", None),  # generic unknown stays
+    ]
+    kept = records_without_user(records, "u-a")
+    assert {r["measurement_id"] for r in kept} == {"2", "4"}
+    # Other user and generic unknown records are untouched.
+    assert kept[0]["user_id"] == "u-b" or kept[0]["user_id"] is None
+
+
+def test_records_without_user_idempotent() -> None:
+    records = [_record("1", "u-x")]
+    assert records_without_user(records, "u-x") == []
+    assert records_without_user(records, "u-x") == []
+    # Unknown (owner-less) records survive repeated deletion of any user.
+    ownerless = [_record("9", None)]
+    assert records_without_user(ownerless, "u-x") == ownerless
+    assert records_without_user(ownerless, "other") == ownerless
