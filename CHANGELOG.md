@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-09-08
+
+### Fixed
+- **Options menu displayed internal ids** (e.g. ``add_user``) instead of the
+  human-readable labels: `async_show_menu` treats a *dict* as explicit
+  labels, so `_build_menu()` now returns a **list of step ids**, letting
+  Home Assistant resolve each entry through the `menu_options`
+  translations. Action constants and `async_step_*` handlers are unchanged;
+  strings.json/en.json labels are untouched.
+
 ## [0.6.1] - 2026-09-08
 
 ### Fixed

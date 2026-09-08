@@ -122,6 +122,48 @@ def test_no_stale_navigation_ids() -> None:
         assert "assign_unknown" not in text, path.name
 
 
+def test_build_menu_returns_list_of_step_ids() -> None:
+    """BUG: menu must be a list of step ids so HA looks up labels."""
+    text = CONFIG_FLOW.read_text(encoding="utf-8")
+    assert "def _build_menu(self) -> list[str]:" in text
+    assert "menu: list[str] = [ACTION_ADD_USER]" in text
+    assert "menu[" not in text, "dict-style menu assignment must be gone"
+    # Values appended are action constants (== step ids), not label strings.
+    assert "menu.append(ACTION_SETTINGS)" in text
+    assert "menu.append(ACTION_SAVE)" in text
+    assert "menu.append(ACTION_ASSIGN)" in text
+    assert "menu.append(ACTION_REASSIGN)" in text
+
+
+def test_build_menu_conditional_entries_preserved() -> None:
+    """assign_pick / reassign_pick stay conditional on work existing."""
+    text = CONFIG_FLOW.read_text(encoding="utf-8")
+    assert "if users and coordinator.unknown_count:" in text
+    assert "if users and coordinator.assigned_records(1):" in text
+    # User-only entries are gated on at least one user existing.
+    assert "if users:" in text
+    assert "ACTION_EDIT_USER" in text
+    assert "ACTION_REMOVE_USER" in text
+
+
+def test_menu_translations_snapshot_unchanged() -> None:
+    """strings.json/en.json labels stay as shipped (do not revert)."""
+    expected = {
+        "add_user": "👤 Add user",
+        "edit_user": "✏️ Edit user",
+        "remove_user": "🗑️ Remove user",
+        "active_user": "🔗 Scale handshake profile",
+        "settings": "⚙️ Settings",
+        "assign_pick": "📌 Assign measurement",
+        "reassign_pick": "🔄 Reassign measurement",
+        "save_close": "💾 Save & Close",
+    }
+    for language_file in (STRINGS, EN):
+        data = json.loads(language_file.read_text(encoding="utf-8"))
+        menu_options = data["options"]["step"]["menu"]["menu_options"]
+        assert menu_options == expected, language_file.name
+
+
 def test_setup_entry_not_gated_on_ble_reachability() -> None:
     """BUG 2: async_setup_entry must start without the scale being online."""
     init_path = ROOT / "custom_components" / "realme_scale" / "__init__.py"

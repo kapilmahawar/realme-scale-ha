@@ -435,7 +435,7 @@ class RealmeScaleOptionsFlow(OptionsFlow):
         self._tolerance_kg: float = DEFAULT_AUTO_ASSIGN_KG
         self._impedance_tol_ohm: float = DEFAULT_IMPEDANCE_TOL_OHM
         self._removed_user_ids: list[str] = []
-        self._menu_options: dict[str, str] = {}
+        self._menu_options: list[str] = []
         self._edit_user_id: str | None = None
 
     # -- helpers -----------------------------------------------------------
@@ -459,24 +459,35 @@ class RealmeScaleOptionsFlow(OptionsFlow):
         assert self._users is not None
         return self._users
 
-    def _build_menu(self) -> dict[str, str]:
-        """Menu entries; user actions appear only when users exist."""
-        menu: dict[str, str] = {ACTION_ADD_USER: "add_user"}
+    def _build_menu(self) -> list[str]:
+        """Menu entries as *step ids* (list, not dict).
+
+        Home Assistant shows human-readable labels by looking each id up in
+        the ``menu_options`` translations; a dict would be treated as
+        explicit labels and the internal ids would be displayed verbatim.
+        """
+        menu: list[str] = [ACTION_ADD_USER]
+
         users = self._users_or_default()
         if users:
-            menu[ACTION_EDIT_USER] = "edit_user"
-            menu[ACTION_REMOVE_USER] = "remove_user"
-            menu[ACTION_ACTIVE_USER] = "active_user"
-        menu[ACTION_SETTINGS] = "settings"
+            menu.extend(
+                [
+                    ACTION_EDIT_USER,
+                    ACTION_REMOVE_USER,
+                    ACTION_ACTIVE_USER,
+                ]
+            )
+
+        menu.append(ACTION_SETTINGS)
+
         coordinator = self._coordinator()
-        if coordinator is None:
-            menu[ACTION_SAVE] = "save_close"
-            return menu
-        if users and coordinator.unknown_count:
-            menu[ACTION_ASSIGN] = "assign_pick"
-        if users and coordinator.assigned_records(1):
-            menu[ACTION_REASSIGN] = "reassign_pick"
-        menu[ACTION_SAVE] = "save_close"
+        if coordinator is not None:
+            if users and coordinator.unknown_count:
+                menu.append(ACTION_ASSIGN)
+            if users and coordinator.assigned_records(1):
+                menu.append(ACTION_REASSIGN)
+
+        menu.append(ACTION_SAVE)
         return menu
 
     # -- main menu ---------------------------------------------------------
