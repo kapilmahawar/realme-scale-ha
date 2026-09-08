@@ -32,6 +32,6 @@ assign_measurement:
       name: User
       description: Name or id of the user this measurement belongs to.
       required: true
-      example: Alice
+      example: User A
       selector:
         text:

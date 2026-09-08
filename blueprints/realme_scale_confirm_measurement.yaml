@@ -11,10 +11,11 @@ blueprint:
     notify_service:
       name: Notification service
       description: >-
-        The notify.* service to use, e.g. notify.mobile_app_alice_phone.
+        The notify.* service to use, e.g. notify.mobile_app_<device> (pick
+        your device's notify service when creating the automation).
       selector:
         text:
-      default: notify.mobile_app_phone
+      default: notify.notify
     persistent:
       name: Keep notification visible
       description: Whether to keep the notification until it is actioned.

@@ -13,9 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Device branding**: physical scale device friendly name is now the
   canonical `Realme Smart Scale` (MAC no longer part of the primary name;
   model metadata is `RMH2011`). User devices are named by the person only
-  (`Bob`, `Alice`) under the scale via `via_device` - no repeated
-  "Realme Smart Scale - ..." prefix. Stable device identifiers are
-  unchanged.
+  (no repeated "Realme Smart Scale - ..." prefix) under the scale via
+  `via_device`. Stable device identifiers are unchanged.
 - **Entity metadata**: `Last Measured` is now categorized
   `DIAGNOSTIC`; icons aligned (`Muscle` -> `mdi:arm-flex`, `BMI` ->
   `mdi:human`, `Ideal Weight` -> `mdi:target`); entity unique ids/entity
