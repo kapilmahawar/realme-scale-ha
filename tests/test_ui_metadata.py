@@ -84,3 +84,16 @@ def test_select_hides_internal_user_ids() -> None:
     # The plain (non-duplicate) option never embeds the stable user id.
     assert 'return f"{name} ({user.user_id[-6:]})"' in select
     assert 'return name' in select
+
+
+def test_sensor_availability_does_not_depend_on_ble_connection() -> None:
+    """Measurement sensors stay available with last-known data when the
+    scale disconnects; only the Connected binary sensor reports link state.
+    """
+    sensor = SENSOR.read_text(encoding="utf-8")
+    assert "coordinator.connected" not in sensor, (
+        "measurement sensors must not gate availability on BLE link state"
+    )
+    assert "Available whenever we have a (last known) measurement value." in sensor
+    binary = BINARY.read_text(encoding="utf-8")
+    assert "coordinator.connected" in binary

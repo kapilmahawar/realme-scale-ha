@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-08
+
+### Fixed
+- **Sensor state persistence across BLE disconnects**: user measurement and
+  derived sensors no longer gate availability on the BLE connection state.
+  Once a valid measurement exists, entities keep their last known value
+  (and stay `available`) while the scale sleeps/disconnects, so history
+  graphs keep a continuous line instead of showing a gap. The scale-level
+  `Connected` binary sensor still reports link state independently.
+
 ## [0.8.0] - 2026-09-08
 
 ### Changed (UI/UX polish only - no functionality/storage changes)

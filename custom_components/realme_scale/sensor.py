@@ -277,9 +277,13 @@ class RealmeScaleUserSensor(SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Only available while the scale link is up and we have a value."""
-        if not self.coordinator.connected:
-            return False
+        """Available whenever we have a (last known) measurement value.
+
+        Intentionally independent of the BLE link state: once a valid
+        measurement exists it stays available during disconnects so history
+        graphs keep the last known value instead of showing a gap.  Link
+        state is reported by the scale-level ``Connected`` binary sensor.
+        """
         measurement = self._measurement()
         if measurement is None:
             return False
@@ -403,9 +407,11 @@ class RealmeScaleDerivedSensor(SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Available when the scale link is up and a value can be derived."""
-        if not self.coordinator.connected:
-            return False
+        """Available whenever a value can be derived from the last reading.
+
+        Independent of the BLE link state so derived metrics keep their last
+        known value across disconnects (see RealmeScaleUserSensor).
+        """
         return self._computed() is not None
 
     @property
