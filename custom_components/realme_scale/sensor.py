@@ -31,7 +31,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import metrics
 from .const import (
     CONF_ADDRESS,
-    CONF_NAME,
+    DEFAULT_NAME,
     DOMAIN,
     MANUFACTURER,
     MODEL,
@@ -53,21 +53,28 @@ def _scale_device_identifier(address: str) -> tuple[str, str]:
 
 
 def _scale_device_info(entry: ConfigEntry) -> DeviceInfo:
+    """DeviceInfo for the physical scale (canonical branding, no MAC)."""
     return DeviceInfo(
         identifiers={_scale_device_identifier(entry.data[CONF_ADDRESS])},
         manufacturer=MANUFACTURER,
-        name=entry.title or "Realme Smart Scale",
+        name=DEFAULT_NAME,
         model=MODEL,
     )
 
 
 def _user_device_info(entry: ConfigEntry, user: ScaleUser) -> DeviceInfo:
+    """DeviceInfo for one user's virtual device (name = user name only).
+
+    The device hierarchy (via_device = physical scale) already establishes
+    that this is a Realme Smart Scale user, so the friendly name is just the
+    person's name.
+    """
     return DeviceInfo(
         identifiers={
             _user_device_identifier(entry.data[CONF_ADDRESS], user.user_id)
         },
         manufacturer=MANUFACTURER,
-        name=f"{entry.data.get(CONF_NAME, 'Realme Smart Scale')} - {user.name or 'User'}",
+        name=user.name or "User",
         model=MODEL,
         via_device=_scale_device_identifier(entry.data[CONF_ADDRESS]),
     )
@@ -106,7 +113,7 @@ SENSOR_DESCRIPTIONS: tuple[ScaleSensorDescription, ...] = (
         value_key="muscle",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:dumbbell",
+        icon="mdi:arm-flex",
     ),
     ScaleSensorDescription(
         key="water",
@@ -157,6 +164,7 @@ SENSOR_DESCRIPTIONS: tuple[ScaleSensorDescription, ...] = (
         value_key="measured_at",
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
 
@@ -172,7 +180,7 @@ DerivedCompute = Callable[[Any, Any], object | None]
 
 DERIVED_SENSORS: dict[str, tuple[str, str | None, str, int, bool, DerivedCompute]] = {
     "bmi": (
-        "BMI", None, "mdi:human-male-height-variant", 2, False,
+        "BMI", None, "mdi:human", 2, False,
         lambda u, m: metrics.bmi(m.weight_kg, u.height_cm),
     ),
     "body_fat_mass": (
@@ -184,7 +192,7 @@ DERIVED_SENSORS: dict[str, tuple[str, str | None, str, int, bool, DerivedCompute
         lambda u, m: metrics.schofield_bmr(u.is_male(), u.age, m.weight_kg),
     ),
     "ideal_weight": (
-        "Ideal Weight", UnitOfMass.KILOGRAMS, "mdi:scale-balance", 2, False,
+        "Ideal Weight", UnitOfMass.KILOGRAMS, "mdi:target", 2, False,
         lambda u, m: metrics.devine_ideal_weight(u.is_male(), u.height_cm),
     ),
     "protein": (

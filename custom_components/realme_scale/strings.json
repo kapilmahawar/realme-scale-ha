@@ -14,7 +14,7 @@
         "title": "First user",
         "description": "Optionally pick an existing person from Home Assistant (the name is filled in for you), then confirm the profile the scale uses for the connection handshake and body-composition calculations. More users can be added later from the integration options.",
         "data": {
-          "person_entity_id": "Link to person (optional)",
+          "person_entity_id": "Home Assistant person (optional)",
           "user_name": "User name",
           "sex": "Sex",
           "age": "Age",
@@ -56,7 +56,7 @@
       "add_user": {
         "title": "Add a user",
         "data": {
-          "person_entity_id": "Link to person (optional)",
+          "person_entity_id": "Home Assistant person (optional)",
           "user_name": "User name",
           "sex": "Sex",
           "age": "Age",
@@ -78,7 +78,7 @@
       "edit_user_form": {
         "title": "Edit {user}",
         "data": {
-          "person_entity_id": "Link to person (optional)",
+          "person_entity_id": "Home Assistant person (optional)",
           "user_name": "User name",
           "sex": "Sex",
           "age": "Age",
@@ -91,17 +91,17 @@
         }
       },
       "remove_user": {
-        "title": "Delete user",
-        "description": "Pick the user to delete. Their stored measurements are kept and become unassigned.",
+        "title": "Remove user",
+        "description": "Pick the user to remove. This action cannot be undone.",
         "data": {
           "user": "User"
         }
       },
       "remove_user_confirm": {
-        "title": "Delete {user}?",
-        "description": "Deleting the last user is allowed - the scale stays configured and new readings arrive as unassigned until a user is added. Already stored measurements are kept but become unassigned.",
+        "title": "Remove {user}?",
+        "description": "Removing this user will permanently delete:\n\n• their stored measurements\n• their Home Assistant sensors\n• their Home Assistant device\n\nThis cannot be undone. Other users and the physical scale are not affected.",
         "data": {
-          "confirm_delete": "Yes, delete this user (measurements kept as unassigned)"
+          "confirm_delete": "Yes, permanently remove this user"
         }
       },
       "active_user": {

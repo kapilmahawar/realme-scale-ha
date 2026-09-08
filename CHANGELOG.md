@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-08
+
+### Changed (UI/UX polish only - no functionality/storage changes)
+- **Device branding**: physical scale device friendly name is now the
+  canonical `Realme Smart Scale` (MAC no longer part of the primary name;
+  model metadata is `RMH2011`). User devices are named by the person only
+  (`Bob`, `Alice`) under the scale via `via_device` - no repeated
+  "Realme Smart Scale - ..." prefix. Stable device identifiers are
+  unchanged.
+- **Entity metadata**: `Last Measured` is now categorized
+  `DIAGNOSTIC`; icons aligned (`Muscle` -> `mdi:arm-flex`, `BMI` ->
+  `mdi:human`, `Ideal Weight` -> `mdi:target`); entity unique ids/entity
+  ids are untouched.
+- **Handshake-profile select** shows the person's name (no internal user
+  id) unless names collide.
+- **Options flow copy**: Remove-user screens now clearly state that
+  removal permanently deletes the user's measurements, sensors and device
+  (matching v0.7 deletion); "Home Assistant person (optional)" labels.
+  No flow logic or deletion implementation changed.
+
+### Added
+- Static UI-metadata tests (`tests/test_ui_metadata.py`).
+
 ## [0.7.0] - 2026-09-08
 
 ### Changed

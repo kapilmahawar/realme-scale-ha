@@ -16,14 +16,29 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_ADDRESS, DOMAIN, MANUFACTURER, MODEL
+from .const import CONF_ADDRESS, DEFAULT_NAME, DOMAIN, MANUFACTURER, MODEL
 from .coordinator import RealmeScaleCoordinator
 from .scale_controller import ScaleUser
 
 
-def _option_for(user: ScaleUser) -> str:
-    """Stable, human-readable select option for one user."""
-    return f"{user.name or 'User'} ({user.user_id})"
+def _display_name(user: ScaleUser) -> str:
+    return (user.name or "User").strip()
+
+
+def _option_for(user: ScaleUser, duplicate_names: bool = False) -> str:
+    """Human option; hides the stable user id unless names collide."""
+    name = _display_name(user)
+    if duplicate_names:
+        return f"{name} ({user.user_id[-6:]})"
+    return name
+
+
+def _name_counts(users: list[ScaleUser]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for user in users:
+        name = _display_name(user)
+        counts[name] = counts.get(name, 0) + 1
+    return counts
 
 
 async def async_setup_entry(
@@ -59,26 +74,36 @@ class RealmeScaleActiveUserSelect(SelectEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.data[CONF_ADDRESS])},
             manufacturer=MANUFACTURER,
-            name=entry.title or "Realme Smart Scale",
+            name=DEFAULT_NAME,
             model=MODEL,
         )
         self._remove_listener: Callable[[], None] | None = None
 
     @property
     def options(self) -> list[str]:
-        """One option per configured user."""
-        return [_option_for(user) for user in self.coordinator.users]
+        """One human option per configured user."""
+        counts = _name_counts(self.coordinator.users)
+        return [
+            _option_for(user, counts.get(_display_name(user), 1) > 1)
+            for user in self.coordinator.users
+        ]
 
     @property
     def current_option(self) -> str | None:
         """The active user as an option string."""
         active = self.coordinator.active_user()
-        return _option_for(active) if active is not None else None
+        if active is None:
+            return None
+        counts = _name_counts(self.coordinator.users)
+        duplicate = counts.get(_display_name(active), 1) > 1
+        return _option_for(active, duplicate)
 
     async def async_select_option(self, option: str) -> None:
         """Make the selected user active (reconnects the scale)."""
         for user in self.coordinator.users:
-            if option == _option_for(user):
+            counts = _name_counts(self.coordinator.users)
+            duplicate = counts.get(_display_name(user), 1) > 1
+            if option == _option_for(user, duplicate):
                 await self.coordinator.async_set_active_user(user.user_id)
                 return
         # No match: nothing to do, but surface a refresh so stale states

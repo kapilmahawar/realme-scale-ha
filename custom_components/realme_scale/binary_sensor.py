@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_ADDRESS, DOMAIN, MANUFACTURER, MODEL
+from .const import CONF_ADDRESS, DEFAULT_NAME, DOMAIN, MANUFACTURER, MODEL
 from .coordinator import RealmeScaleCoordinator
 
 
@@ -45,7 +45,7 @@ class RealmeScaleConnectivity(BinarySensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.data[CONF_ADDRESS])},
             manufacturer=MANUFACTURER,
-            name=entry.title or "Realme Smart Scale",
+            name=DEFAULT_NAME,
             model=MODEL,
         )
         self._remove_listener: Callable[[], None] | None = None

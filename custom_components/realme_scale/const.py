@@ -11,7 +11,7 @@ from typing import Final
 DOMAIN: Final = "realme_scale"
 
 MANUFACTURER: Final = "realme"
-MODEL: Final = "Smart Scale RMH2011"
+MODEL: Final = "RMH2011"
 
 # --- GATT ---
 SVC_A602: Final = "0000a602-0000-1000-8000-00805f9b34fb"
