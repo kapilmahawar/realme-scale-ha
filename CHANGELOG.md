@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-08
+
+### Fixed
+- **Entry "Options" menu (Users & measurements) was missing entirely**:
+  `RealmeScaleConfigFlow` never registered `async_get_options_flow`, so Home
+  Assistant did not expose the entry's Options at all. The hook is now wired
+  and `RealmeScaleOptionsFlow` accepts the config entry it is constructed
+  with. Add / edit / remove users now works from the entry card.
+
 ## [0.4.2] - 2026-09-08
 
 ### Fixed
@@ -140,7 +149,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.3.0...v0.4.0

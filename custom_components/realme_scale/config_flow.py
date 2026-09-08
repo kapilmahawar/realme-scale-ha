@@ -24,7 +24,12 @@ from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import HomeAssistant
 
@@ -360,6 +365,17 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"name": self._name},
         )
 
+    @staticmethod
+    async def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> RealmeScaleOptionsFlow:
+        """Return the options flow that manages users & measurements.
+
+        Without this hook Home Assistant does not expose the entry's
+        "Options" menu at all.
+        """
+        return RealmeScaleOptionsFlow(config_entry)
+
 
 # ---------------------------------------------------------------------------
 # Options flow (manage users + assignment after install)
@@ -369,8 +385,9 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
 class RealmeScaleOptionsFlow(OptionsFlow):
     """Menu-driven manager for users and the unknown-measurement queue."""
 
-    def __init__(self) -> None:
+    def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize the options flow state."""
+        super().__init__(config_entry)
         self._users: list[ScaleUser] | None = None
         self._active_user_id: str | None = None
         self._tolerance_kg: float = DEFAULT_AUTO_ASSIGN_KG
