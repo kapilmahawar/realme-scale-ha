@@ -36,6 +36,7 @@ from .const import (
     CONF_HEIGHT,
     CONF_IMPEDANCE_TOL_OHM,
     CONF_INITIAL_WEIGHT,
+    CONF_PERSON_ENTITY,
     CONF_SEX,
     CONF_USER_NAME,
     DEFAULT_AUTO_ASSIGN_KG,
@@ -89,48 +90,87 @@ def _sex_options() -> list[str]:
     return [SEX_MALE, SEX_FEMALE]
 
 
-def profile_schema(data: dict[str, Any] | None = None) -> vol.Schema:
-    """Voluptuous schema for one user profile."""
+def person_choices(hass: HomeAssistant) -> dict[str, str]:
+    """Existing HA People (person.* entities) as {entity_id: name}.
+
+    The empty option means "standalone profile, not linked to a person".
+    """
+    choices: dict[str, str] = {"": "Not linked to a person"}
+    for state in hass.states.async_all("person"):
+        choices[state.entity_id] = str(state.name or state.entity_id)
+    return choices
+
+
+def profile_schema(
+    data: dict[str, Any] | None = None,
+    persons: dict[str, str] | None = None,
+) -> vol.Schema:
+    """Voluptuous schema for one user profile.
+
+    ``persons`` adds an optional dropdown linking the profile to an existing
+    Home Assistant person entity (the profile name auto-fills from it).
+    """
     data = data or {}
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_USER_NAME,
-                default=data.get(CONF_USER_NAME, ""),
-            ): str,
-            vol.Required(
-                CONF_SEX,
-                default=data.get(CONF_SEX, SEX_MALE),
-            ): vol.In(_sex_options()),
-            vol.Required(
-                CONF_AGE,
-                default=data.get(CONF_AGE, 30),
-            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=120)),
-            vol.Required(
-                CONF_HEIGHT,
-                default=data.get(CONF_HEIGHT, 175.0),
-            ): vol.All(
-                vol.Coerce(float), vol.Range(min=50.0, max=250.0)
-            ),
-            vol.Required(
-                CONF_ACTIVITY_LEVEL,
-                default=data.get(CONF_ACTIVITY_LEVEL, "moderate"),
-            ): vol.In(ACTIVITY_LEVELS),
-            vol.Optional(
-                CONF_INITIAL_WEIGHT,
-                default=data.get(CONF_INITIAL_WEIGHT, 0.0),
-            ): vol.All(
-                vol.Coerce(float), vol.Range(min=0.0, max=300.0)
-            ),
-        }
-    )
+    schema: dict[vol.Marker, Any] = {
+        vol.Required(
+            CONF_USER_NAME,
+            default=data.get(CONF_USER_NAME, ""),
+        ): str,
+        vol.Required(
+            CONF_SEX,
+            default=data.get(CONF_SEX, SEX_MALE),
+        ): vol.In(_sex_options()),
+        vol.Required(
+            CONF_AGE,
+            default=data.get(CONF_AGE, 30),
+        ): vol.All(vol.Coerce(int), vol.Range(min=1, max=120)),
+        vol.Required(
+            CONF_HEIGHT,
+            default=data.get(CONF_HEIGHT, 175.0),
+        ): vol.All(
+            vol.Coerce(float), vol.Range(min=50.0, max=250.0)
+        ),
+        vol.Required(
+            CONF_ACTIVITY_LEVEL,
+            default=data.get(CONF_ACTIVITY_LEVEL, "moderate"),
+        ): vol.In(ACTIVITY_LEVELS),
+        vol.Optional(
+            CONF_INITIAL_WEIGHT,
+            default=data.get(CONF_INITIAL_WEIGHT, 0.0),
+        ): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=300.0)
+        ),
+    }
+    if persons:
+        schema.update(
+            {
+                vol.Optional(
+                    CONF_PERSON_ENTITY,
+                    default=data.get(CONF_PERSON_ENTITY, ""),
+                ): vol.In(persons),
+            }
+        )
+    return vol.Schema(schema)
 
 
-def _profile_from_input(user_input: dict[str, Any], user_id: str) -> ScaleUser:
-    """Build a ScaleUser from validated form input."""
+def _profile_from_input(
+    user_input: dict[str, Any],
+    user_id: str,
+    persons: dict[str, str] | None = None,
+) -> ScaleUser:
+    """Build a ScaleUser from validated form input.
+
+    When no name was typed but a person was picked, the profile name is
+    taken from that person so setup can be a single dropdown + confirm.
+    """
+    name = str(user_input.get(CONF_USER_NAME, "")).strip()
+    person = str(user_input.get(CONF_PERSON_ENTITY, ""))
+    if not name and person and persons:
+        name = str(persons.get(person, "")).strip()
     return ScaleUser(
         user_id=user_id,
-        name=str(user_input[CONF_USER_NAME]).strip(),
+        name=name,
+        person_entity_id=person,
         sex=str(user_input[CONF_SEX]),
         age=int(user_input[CONF_AGE]),
         height_cm=float(user_input[CONF_HEIGHT]),
@@ -298,10 +338,16 @@ async def async_step_user(
     async def async_step_profile(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Collect the first user profile written into the handshake."""
+        """Collect the first user profile written into the handshake.
+
+        Offers a dropdown of existing HA People: picking one auto-fills the
+        profile name; the profile numbers still need confirming once
+        (they drive the handshake and body-composition math).
+        """
         errors: dict[str, str] = {}
+        persons = person_choices(self.hass)
         if user_input is not None:
-            user = _profile_from_input(user_input, _new_user_id())
+            user = _profile_from_input(user_input, _new_user_id(), persons)
             return self.async_create_entry(
                 title=f"{self._name} ({self._address})",
                 data={CONF_ADDRESS: self._address, CONF_NAME: self._name},
@@ -312,7 +358,7 @@ async def async_step_user(
 
         return self.async_show_form(
             step_id="profile",
-            data_schema=profile_schema(),
+            data_schema=profile_schema(persons=persons),
             errors=errors,
             description_placeholders={"name": self._name},
         )
@@ -402,19 +448,22 @@ class RealmeScaleOptionsFlow(OptionsFlow):
     async def async_step_add_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Collect a new user profile."""
+        """Collect a new user profile (optionally linked to an HA person)."""
         errors: dict[str, str] = {}
+        persons = person_choices(self.hass)
         if user_input is not None:
-            if not str(user_input.get(CONF_USER_NAME, "")).strip():
+            name_blank = not str(user_input.get(CONF_USER_NAME, "")).strip()
+            person = str(user_input.get(CONF_PERSON_ENTITY, ""))
+            if name_blank and not person:
                 errors[CONF_USER_NAME] = "name_required"
             else:
-                user = _profile_from_input(user_input, _new_user_id())
+                user = _profile_from_input(user_input, _new_user_id(), persons)
                 self._users_or_default().append(user)
                 return await self.async_step_init()
 
         return self.async_show_form(
             step_id="add_user",
-            data_schema=profile_schema(),
+            data_schema=profile_schema(persons=persons),
             errors=errors,
         )
 
@@ -439,7 +488,7 @@ class RealmeScaleOptionsFlow(OptionsFlow):
     async def async_step_edit_user_form(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Edit one user's profile."""
+        """Edit one user's profile (person link optional)."""
         users = self._users_or_default()
         target_id = self._edit_user_id
         target = next((u for u in users if u.user_id == target_id), None)
@@ -447,17 +496,20 @@ class RealmeScaleOptionsFlow(OptionsFlow):
             return await self.async_step_init()
 
         errors: dict[str, str] = {}
+        persons = person_choices(self.hass)
         if user_input is not None:
-            if not str(user_input.get(CONF_USER_NAME, "")).strip():
+            name_blank = not str(user_input.get(CONF_USER_NAME, "")).strip()
+            person = str(user_input.get(CONF_PERSON_ENTITY, ""))
+            if name_blank and not person:
                 errors[CONF_USER_NAME] = "name_required"
             else:
-                updated = _profile_from_input(user_input, target_id)
+                updated = _profile_from_input(user_input, target_id, persons)
                 users[users.index(target)] = updated
                 return await self.async_step_init()
 
         return self.async_show_form(
             step_id="edit_user_form",
-            data_schema=profile_schema(_profile_prefill(target)),
+            data_schema=profile_schema(_profile_prefill(target), persons),
             errors=errors,
             description_placeholders={"user": _user_label(target)},
         )

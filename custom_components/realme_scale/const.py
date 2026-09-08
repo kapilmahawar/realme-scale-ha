@@ -50,6 +50,7 @@ LEGACY_USER_ID: Final = "default"  # id used when migrating single-profile entri
 
 # User profile keys
 CONF_USER_NAME: Final = "user_name"
+CONF_PERSON_ENTITY: Final = "person_entity_id"  # optional HA person.* link
 CONF_SEX: Final = "sex"            # "male" | "female"
 CONF_AGE: Final = "age"            # years (int)
 CONF_HEIGHT: Final = "height"      # cm (float)

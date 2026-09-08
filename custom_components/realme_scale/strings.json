@@ -12,8 +12,9 @@
       },
       "profile": {
         "title": "First user",
-        "description": "Add the first user. The scale uses this profile for the connection handshake and body-composition calculations. More users can be added later from the integration options.",
+        "description": "Optionally pick an existing person from Home Assistant (the name is filled in for you), then confirm the profile the scale uses for the connection handshake and body-composition calculations. More users can be added later from the integration options.",
         "data": {
+          "person_entity_id": "Link to person (optional)",
           "user_name": "User name",
           "sex": "Sex",
           "age": "Age",
@@ -51,6 +52,7 @@
       "add_user": {
         "title": "Add a user",
         "data": {
+          "person_entity_id": "Link to person (optional)",
           "user_name": "User name",
           "sex": "Sex",
           "age": "Age",
@@ -69,6 +71,7 @@
       "edit_user_form": {
         "title": "Edit {user}",
         "data": {
+          "person_entity_id": "Link to person (optional)",
           "user_name": "User name",
           "sex": "Sex",
           "age": "Age",

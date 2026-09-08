@@ -82,6 +82,11 @@ show that user's latest attributed measurement) plus one *scale* device:
 | `sensor.<name>_impedance` | Ω | diagnostic (disabled by default) |
 | `sensor.<name>_last_measured` | timestamp | measurement time from the scale |
 
+The device is named `Realme Smart Scale - <user name>` (entity id e.g.
+`sensor.realme_smart_scale_alice_weight`), and every sensor carries the
+attributes `user`, `user_id`, `measured_at` — plus `person` /
+`person_entity_id` when the profile is linked to an HA person.
+
 On the *scale* device:
 
 | Entity | Notes |
@@ -89,6 +94,14 @@ On the *scale* device:
 | `binary_sensor.<name>_connected` | live GATT link state |
 | `sensor.<name>_unassigned_count` | measurements waiting to be assigned |
 | `select.<name>_active_user` | switch which profile goes into the handshake |
+
+> **Upgrading from 0.1?** The old version placed sensors directly on the
+> scale device, so your entity registry may still contain stale entities
+> whose ids contain the MAC (e.g.
+> `sensor.realme_smart_scale_d8_0b_cb_14_a4_4f_weight`). The new per-user
+> sensors are separate entities — disable/delete the MAC-based ones under
+> **Settings → Devices & Services → Entities** (search the MAC) so
+> dashboards only show the per-user devices.
 
 An event `realme_scale_measurement` is fired for every parsed packet so
 automations can react without polling entities. The event carries
@@ -181,6 +194,31 @@ Template helpers if you prefer cards fed by templates:
 
 ```jinja
 {{ states('sensor.realme_smart_scale_alice_weight') }} kg
+```
+
+### Linking to Home Assistant People
+
+When you add/edit a user you get a **dropdown of your existing People**
+(Settings → People → `person.*`). Picking one fills in the user name and
+links the profile, so a profile never drifts from the person it belongs to.
+Each of that user's sensors then carries:
+
+- `user` / `user_id` — the scale profile name and stable id
+- `person` / `person_entity_id` — the linked HA person (when set)
+
+Useful for templates and automations:
+
+```jinja
+{# every sensor carrying this person's id is theirs #}
+{{ state_attr('sensor.realme_smart_scale_alice_weight', 'person') }}
+
+{# list entities for a person via the person attribute #}
+{% for e in states.sensor %}
+  {% if e.entity_id.startswith('sensor.realme_smart_scale_') and
+        state_attr(e.entity_id, 'person_entity_id') == 'person.alice' %}
+    {{ e.entity_id }}: {{ e.state }}
+  {% endif %}
+{% endfor %}
 ```
 
 A "who was that?" confirm flow for unassigned readings: listen for

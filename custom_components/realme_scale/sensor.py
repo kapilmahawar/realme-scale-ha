@@ -239,11 +239,20 @@ class RealmeScaleUserSensor(SensorEntity):
         if measurement is None:
             return {}
         user = self.coordinator.get_user(self._user_id)
-        return {
+        attributes: dict[str, object] = {
             "measured_at": measurement.measured_at.isoformat(),
             "user": user.name if user else (measurement.user_name or ""),
             "user_id": self._user_id,
         }
+        if user is not None and user.person_entity_id:
+            person_state = self.coordinator.hass.states.get(
+                user.person_entity_id
+            )
+            attributes["person"] = (
+                person_state.name if person_state else user.person_entity_id
+            )
+            attributes["person_entity_id"] = user.person_entity_id
+        return attributes
 
     @callback
     def _handle_coordinator_update(self) -> None:

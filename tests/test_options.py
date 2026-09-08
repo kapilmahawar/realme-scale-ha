@@ -101,9 +101,10 @@ def test_empty_and_garbage_user_entries_skipped() -> None:
 
 
 def test_profile_serialization_matches_keys() -> None:
-    user = ScaleUser(user_id="u1", name="Alice", sex="female", age=32,
-                     height_cm=168.0, activity_level="moderate",
-                     initial_weight=62.0)
+    user = ScaleUser(user_id="u1", name="Alice", person_entity_id="person.alice",
+                     sex="female", age=32, height_cm=168.0,
+                     activity_level="moderate", initial_weight=62.0)
     profile = scale_user_to_profile(user)
     assert scale_user_from_profile(profile) == user
+    assert profile["person_entity_id"] == "person.alice"
     assert pytest.approx(profile["height"]) == 168.0

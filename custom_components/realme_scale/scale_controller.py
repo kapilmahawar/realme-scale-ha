@@ -38,6 +38,7 @@ from .const import (
     CONF_HEIGHT,
     CONF_IMPEDANCE_TOL_OHM,
     CONF_INITIAL_WEIGHT,
+    CONF_PERSON_ENTITY,
     CONF_SEX,
     CONF_USER_ID,
     CONF_USER_NAME,
@@ -98,6 +99,9 @@ class ScaleUser:
 
     user_id: str = ""
     name: str = ""
+    # Optional link to a Home Assistant person entity (person.*), so
+    # dashboards can be built around the people HA already knows.
+    person_entity_id: str = ""
     sex: str = SEX_MALE            # "male" | "female"
     age: int = 30
     height_cm: float = 175.0
@@ -147,6 +151,7 @@ def scale_user_from_profile(values: Mapping[str, Any]) -> ScaleUser:
     return ScaleUser(
         user_id=_safe_str(values.get(CONF_USER_ID), ""),
         name=_safe_str(values.get(CONF_USER_NAME), ""),
+        person_entity_id=_safe_str(values.get(CONF_PERSON_ENTITY), ""),
         sex=_safe_str(values.get(CONF_SEX), SEX_MALE),
         age=_safe_int(values.get(CONF_AGE), 30),
         height_cm=_safe_float(values.get(CONF_HEIGHT), 175.0),
@@ -157,15 +162,12 @@ def scale_user_from_profile(values: Mapping[str, Any]) -> ScaleUser:
     )
 
 
-def _valid_activity(value: str) -> str:
-    return value if value in ACTIVITY_LEVELS else "moderate"
-
-
 def scale_user_to_profile(user: ScaleUser) -> dict[str, Any]:
     """Serialize a ScaleUser into the canonical stored profile dict."""
     return {
         CONF_USER_ID: user.user_id,
         CONF_USER_NAME: user.name,
+        CONF_PERSON_ENTITY: user.person_entity_id,
         CONF_SEX: user.sex,
         CONF_AGE: user.age,
         CONF_HEIGHT: user.height_cm,

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CI: GitHub Actions workflow runs the pure-python test suite on push/PR.
+- **HA People integration**: user setup/edit forms offer a dropdown of
+  existing `person.*` entities; picking one auto-fills the profile name and
+  links the profile (every sensor of that user then exposes `person` /
+  `person_entity_id` attributes).
 - **Discovery filtering**: only devices advertising the scale service UUID
   (`0000a602`) or a scale-like name token are offered by the integration —
   other realme BLE devices (e.g. "realme Buds Air7") are no longer detected
