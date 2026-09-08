@@ -34,6 +34,8 @@ _FIELD_MAP: dict[str, str] = {  # record key -> ScaleMeasurement attribute
     "impedance": "impedance",
     "user_id": "user_id",
     "user_name": "user_name",
+    "assignment_method": "assignment_method",
+    "confidence": "confidence",
 }
 
 
@@ -95,6 +97,10 @@ def measurement_from_record(record: dict[str, Any]) -> ScaleMeasurement:
         ),
         user_id=record.get("user_id"),
         user_name=record.get("user_name"),
+        assignment_method=record.get("assignment_method"),
+        confidence=(
+            float(record["confidence"]) if record.get("confidence") is not None else None
+        ),
     )
     for field in BIA_FIELDS:
         value = record.get(field)

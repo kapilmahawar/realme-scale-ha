@@ -35,6 +35,7 @@ from .const import (
     CONF_ACTIVITY_LEVEL,
     CONF_AGE,
     CONF_AUTO_ASSIGN_KG,
+    CONF_EXPECTED_WEIGHT,
     CONF_HEIGHT,
     CONF_IMPEDANCE_TOL_OHM,
     CONF_INITIAL_WEIGHT,
@@ -43,6 +44,7 @@ from .const import (
     CONF_USER_ID,
     CONF_USER_NAME,
     CONF_USERS,
+    CONF_WEIGHT_TOLERANCE,
     DEFAULT_AUTO_ASSIGN_KG,
     DEFAULT_IMPEDANCE_TOL_OHM,
     LEGACY_USER_ID,
@@ -107,6 +109,11 @@ class ScaleUser:
     height_cm: float = 175.0
     activity_level: str = "moderate"
     initial_weight: float = 0.0    # kg; <= 0 means "new user" (0xFFFF sentinel)
+    # Identity fields for the automatic identification engine.
+    # 0 = not configured (falls back to initial weight / global defaults).
+    expected_weight_kg: float = 0.0
+    weight_tolerance_kg: float = 0.0
+    impedance_tolerance_ohm: float = 0.0
 
     def is_male(self) -> bool:
         return self.sex != SEX_FEMALE
@@ -159,6 +166,11 @@ def scale_user_from_profile(values: Mapping[str, Any]) -> ScaleUser:
             _safe_str(values.get(CONF_ACTIVITY_LEVEL), "moderate")
         ),
         initial_weight=_safe_float(values.get(CONF_INITIAL_WEIGHT), 0.0),
+        expected_weight_kg=_safe_float(values.get(CONF_EXPECTED_WEIGHT), 0.0),
+        weight_tolerance_kg=_safe_float(values.get(CONF_WEIGHT_TOLERANCE), 0.0),
+        impedance_tolerance_ohm=_safe_float(
+            values.get(CONF_IMPEDANCE_TOL_OHM), 0.0
+        ),
     )
 
 
@@ -173,6 +185,9 @@ def scale_user_to_profile(user: ScaleUser) -> dict[str, Any]:
         CONF_HEIGHT: user.height_cm,
         CONF_ACTIVITY_LEVEL: user.activity_level,
         CONF_INITIAL_WEIGHT: user.initial_weight,
+        CONF_EXPECTED_WEIGHT: user.expected_weight_kg,
+        CONF_WEIGHT_TOLERANCE: user.weight_tolerance_kg,
+        CONF_IMPEDANCE_TOL_OHM: user.impedance_tolerance_ohm,
     }
 
 
@@ -329,6 +344,9 @@ class ScaleMeasurement:
     # Plausible owners when the reading was ambiguous (nearest first).
     # Only meaningful while the measurement is unassigned.
     candidate_user_ids: tuple[str, ...] | None = None
+    # How ownership was decided (assignment module constants, or "manual").
+    assignment_method: str | None = None
+    confidence: float | None = None
 
     # Locally derived body-composition metrics (percent / kg / index).
     # Only filled in when impedance > 0 produced a plausible fat estimate.

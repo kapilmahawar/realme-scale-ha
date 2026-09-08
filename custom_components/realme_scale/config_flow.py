@@ -38,12 +38,14 @@ from .const import (
     CONF_ACTIVITY_LEVEL,
     CONF_AGE,
     CONF_AUTO_ASSIGN_KG,
+    CONF_EXPECTED_WEIGHT,
     CONF_HEIGHT,
     CONF_IMPEDANCE_TOL_OHM,
     CONF_INITIAL_WEIGHT,
     CONF_PERSON_ENTITY,
     CONF_SEX,
     CONF_USER_NAME,
+    CONF_WEIGHT_TOLERANCE,
     DEFAULT_AUTO_ASSIGN_KG,
     DEFAULT_IMPEDANCE_TOL_OHM,
     DEFAULT_NAME,
@@ -68,7 +70,7 @@ ACTION_EDIT_USER = "edit_user"
 ACTION_REMOVE_USER = "remove_user"
 ACTION_ACTIVE_USER = "active_user"
 ACTION_SETTINGS = "settings"
-ACTION_ASSIGN = "assign_unknown"
+ACTION_ASSIGN = "assign_pick"
 ACTION_REASSIGN = "reassign_measurement"
 ACTION_SAVE = "save_close"
 
@@ -146,6 +148,26 @@ def profile_schema(
         ): vol.All(
             vol.Coerce(float), vol.Range(min=0.0, max=300.0)
         ),
+        # Identity fields (0 = unset -> falls back to initial weight / the
+        # global automatic-identification defaults).
+        vol.Optional(
+            CONF_EXPECTED_WEIGHT,
+            default=data.get(CONF_EXPECTED_WEIGHT, 0.0),
+        ): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=300.0)
+        ),
+        vol.Optional(
+            CONF_WEIGHT_TOLERANCE,
+            default=data.get(CONF_WEIGHT_TOLERANCE, 0.0),
+        ): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=50.0)
+        ),
+        vol.Optional(
+            CONF_IMPEDANCE_TOL_OHM,
+            default=data.get(CONF_IMPEDANCE_TOL_OHM, 0.0),
+        ): vol.All(
+            vol.Coerce(float), vol.Range(min=0.0, max=500.0)
+        ),
     }
     if persons:
         schema.update(
@@ -182,6 +204,11 @@ def _profile_from_input(
         height_cm=float(user_input[CONF_HEIGHT]),
         activity_level=str(user_input[CONF_ACTIVITY_LEVEL]),
         initial_weight=float(user_input.get(CONF_INITIAL_WEIGHT, 0.0)),
+        expected_weight_kg=float(user_input.get(CONF_EXPECTED_WEIGHT, 0.0)),
+        weight_tolerance_kg=float(user_input.get(CONF_WEIGHT_TOLERANCE, 0.0)),
+        impedance_tolerance_ohm=float(
+            user_input.get(CONF_IMPEDANCE_TOL_OHM, 0.0)
+        ),
     )
 
 
@@ -194,6 +221,9 @@ def _profile_prefill(user: ScaleUser) -> dict[str, Any]:
         CONF_HEIGHT: user.height_cm,
         CONF_ACTIVITY_LEVEL: user.activity_level,
         CONF_INITIAL_WEIGHT: user.initial_weight,
+        CONF_EXPECTED_WEIGHT: user.expected_weight_kg,
+        CONF_WEIGHT_TOLERANCE: user.weight_tolerance_kg,
+        CONF_IMPEDANCE_TOL_OHM: user.impedance_tolerance_ohm,
     }
 
 

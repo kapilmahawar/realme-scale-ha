@@ -38,12 +38,16 @@ async def async_setup_entry(
 
 
 class RealmeScaleActiveUserSelect(SelectEntity):
-    """A dropdown listing every user; picking one makes it active."""
+    """Dropdown for the scale's BLE handshake profile.
+
+    This is NOT the person detected for a measurement - automatic
+    identification decides ownership independently.
+    """
 
     _attr_should_poll = False
     _attr_has_entity_name = True
-    _attr_name = "Active user"
-    _attr_icon = "mdi:account"
+    _attr_name = "Scale handshake profile"
+    _attr_icon = "mdi:account-sync-outline"
 
     def __init__(
         self,

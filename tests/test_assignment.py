@@ -1,86 +1,101 @@
-"""Unit tests for the (weight + impedance) attribution policy."""
+"""Unit tests for the identity-range identification engine."""
 
 from __future__ import annotations
 
 from custom_components.realme_scale.assignment import (
-    Attribution,
-    UserReadingRef,
-    attribute_measurement,
+    METHOD_NONE,
+    METHOD_WEIGHT,
+    METHOD_WEIGHT_IMPEDANCE,
+    AssignmentResult,
+    UserIdentity,
+    identify,
 )
 
-ALICE = UserReadingRef("alice", weight_kg=60.0, impedance_ohm=500)
-BOB = UserReadingRef("bob", weight_kg=75.0, impedance_ohm=520)
-# Same weight as Alice, but very different impedance (different make-up).
-CAROL = UserReadingRef("carol", weight_kg=60.0, impedance_ohm=650)
+ALICE = UserIdentity("alice", center=73.0, weight_tolerance_kg=8.0)
+BOB = UserIdentity("bob", center=52.0, weight_tolerance_kg=6.0)
 
 
-def _attr(refs, weight, impedance, w_tol=3.0, z_tol=60.0) -> Attribution:
-    return attribute_measurement(refs, weight, impedance, w_tol, z_tol)
+def _result(*args, **kwargs) -> AssignmentResult:
+    return identify(*args, **kwargs)
 
 
 def test_no_candidates() -> None:
-    result = _attr([], 75.0, None)
+    result = _result([], 70.0, None)
     assert result.user_id is None
-    assert not result.candidates
-    assert not result.is_assigned
+    assert result.method == METHOD_NONE
 
 
-def test_single_user_always_wins() -> None:
-    """A one-user scale needs no heuristics, whatever the tolerances."""
-    result = _attr([ALICE], 120.0, None, w_tol=0.0, z_tol=0.0)
+def test_single_user_easy() -> None:
+    result = _result([ALICE], 90.0, None)
+    assert result.user_id == "alice"  # single-user scale needs no heuristics
+
+
+def test_weight_identifies_unique_user() -> None:
+    assert _result([ALICE, BOB], 52.0, None).user_id == "bob"
+    assert _result([ALICE, BOB], 52.0, None).method == METHOD_WEIGHT
+    assert _result([ALICE, BOB], 73.0, None).user_id == "alice"
+    assert _result([ALICE, BOB], 73.4, None).user_id == "alice"
+    assert _result([ALICE, BOB], 52.2, None).user_id == "bob"
+
+
+def test_no_valid_candidate_unassigned() -> None:
+    # 60 kg is outside both ranges (Alice 65..81, Bob 46..58).
+    result = _result([ALICE, BOB], 60.0, None)
+    assert result.user_id is None
+    assert result.method == METHOD_NONE
+    assert result.candidates == ()
+
+
+def test_ambiguous_close_users_unassigned() -> None:
+    close_alice = UserIdentity("alice", center=70.0, weight_tolerance_kg=3.0)
+    close_bob = UserIdentity("bob", center=69.0, weight_tolerance_kg=3.0)
+    result = _result([close_alice, close_bob], 69.5, None)
+    assert result.user_id is None
+    assert set(result.candidates) == {"alice", "bob"}
+
+
+def test_impedance_resolves_tie() -> None:
+    close_alice = UserIdentity(
+        "alice", 70.0, 3.0, baseline_impedance_ohm=480, impedance_tolerance_ohm=60
+    )
+    close_bob = UserIdentity(
+        "bob", 69.0, 3.0, baseline_impedance_ohm=620, impedance_tolerance_ohm=60
+    )
+    # 69.5 kg is in both ranges; 595 Ohms is only plausible for Bob.
+    result = _result([close_alice, close_bob], 69.5, 595)
+    assert result.user_id == "bob"
+    assert result.method == METHOD_WEIGHT_IMPEDANCE
+
+
+def test_impedance_unavailable_weight_only() -> None:
+    close_alice = UserIdentity(
+        "alice", 70.0, 3.0, baseline_impedance_ohm=480, impedance_tolerance_ohm=60
+    )
+    # Unique weight match even though impedance is missing.
+    result = _result([close_alice, BOB], 69.4, None)
     assert result.user_id == "alice"
-    assert result.is_assigned
+    assert result.method == METHOD_WEIGHT
 
 
-def test_unique_weight_match_assigns() -> None:
-    assert _attr([ALICE, BOB], 74.8, 518).user_id == "bob"
+def test_missing_impedance_never_crashes() -> None:
+    close = [
+        UserIdentity("a", 70.0, 3.0, baseline_impedance_ohm=None),
+        UserIdentity("b", 75.0, 3.0, baseline_impedance_ohm=500),
+    ]
+    assert _result(close, 74.8, None).user_id == "b"
 
 
-def test_impedance_discriminates_same_weight_users() -> None:
-    """Alice and Carol weigh the same; Carol's impedance is far out of the
-    tolerance band around this reading, so only Alice matches."""
-    assert _attr([ALICE, CAROL], 60.3, 512).user_id == "alice"
+def test_anti_poison_wrong_assignment_does_not_reidentify() -> None:
+    """Regression: a wrong ~52 kg assignment to Alice must not poison him.
 
-
-def test_same_weight_similar_impedance_is_ambiguous() -> None:
-    """Two users both within tolerance on both axes -> do not guess."""
-    dan = UserReadingRef("dan", weight_kg=60.0, impedance_ohm=560)
-    result = _attr([ALICE, dan], 60.3, 530)
-    assert result.user_id is None
-    assert set(result.candidates) == {"alice", "dan"}
-
-
-def test_weight_outside_tolerance_is_pending() -> None:
-    result = _attr([ALICE, BOB], 90.0, 520)
-    assert result.user_id is None
-    assert not result.candidates
-
-
-def test_candidates_ordered_nearest_first() -> None:
-    erin = UserReadingRef("erin", weight_kg=75.8, impedance_ohm=540)
-    result = _attr([BOB, erin, ALICE], 75.2, 530)
-    # BOB/erin are plausible (Alice's weight is far away).
-    assert result.user_id is None
-    assert result.candidates == ("bob", "erin")
-
-
-def test_zero_weight_tolerance_disables_auto_assign() -> None:
-    result = _attr([ALICE, BOB], 60.2, 505, w_tol=0.0)
-    assert result.user_id is None
-    assert not result.is_assigned
-
-
-def test_weight_only_reading_uses_weight_gate() -> None:
-    """No impedance in the reading -> match purely on weight."""
-    assert _attr([ALICE, BOB], 75.2, None).user_id == "bob"
-    # Two users weight-close, no impedance available to tell them apart.
-    dan = UserReadingRef("dan", weight_kg=60.0, impedance_ohm=None)
-    ambiguous = _attr([ALICE, dan], 60.4, None)
-    assert ambiguous.user_id is None
-    assert len(ambiguous.candidates) == 2
-
-
-def test_candidate_without_baseline_never_matches() -> None:
-    newcomer = UserReadingRef("dave", weight_kg=None, impedance_ohm=None)
-    result = _attr([newcomer, BOB], 70.0, 500)
-    assert result.user_id is None
+    Alice's identity range comes from his expected weight, so an
+    out-of-range record can never shift his identity center.  The next
+    ~52 kg reading must still identify Bob.
+    """
+    assert _result([ALICE, BOB], 52.0, None).user_id == "bob"
+    # 52 kg is inside Bob's range, outside Alice's - always Bob.
+    for weight in (52.0, 52.1, 52.2, 51.9):
+        assert _result([ALICE, BOB], weight, None).user_id == "bob"
+    # And Alice's own range is unaffected.
+    assert _result([ALICE, BOB], 73.0, None).user_id == "alice"
+    assert _result([ALICE, BOB], 60.0, None).user_id is None

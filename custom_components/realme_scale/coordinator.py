@@ -33,7 +33,13 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
-from .assignment import UserReadingRef, attribute_measurement
+from .assignment import (
+    METHOD_WEIGHT,
+    METHOD_WEIGHT_IMPEDANCE,
+    AssignmentResult,
+    UserIdentity,
+    identify,
+)
 from .const import (
     CHR_A621,
     CHR_A622,
@@ -113,11 +119,19 @@ class RealmeScaleCoordinator:
         self._options_snapshot: dict[str, Any] = dict(entry.options)
 
         # Latest *attributed* measurement per user (from live packets or
-        # from a later manual assignment).
+        # from a later manual assignment).  Only identity-valid assignments
+        # update this map (see _identity_valid_for).
         self.latest_by_user: dict[str, ScaleMeasurement] = {}
+        # The most recent measurement of any status (for the scale-level
+        # "detected user" view / diagnostics).
+        self.last_measurement: ScaleMeasurement | None = None
 
         self.connected = False
         self.store = MeasurementStore(hass, entry.entry_id)
+
+        # Identity baseline per user: the newest *identity-valid* stored
+        # record (never polluted by a wrong out-of-range assignment).
+        self._identity_state: dict[str, dict[str, float | int | None]] = {}
 
         self._client: BleakClient | None = None
         self._listeners: set[Callable[[], None]] = set()
@@ -190,6 +204,7 @@ class RealmeScaleCoordinator:
             self._store_loaded = True
         except Exception:  # pragma: no cover - storage must not block setup
             _LOGGER.exception("Failed to load measurement store")
+        self._rebuild_identity()
         self._rehydrate_latest()
         self._connect_task = asyncio.create_task(
             self._run_connection_loop(),
@@ -197,9 +212,9 @@ class RealmeScaleCoordinator:
         )
 
     def _rehydrate_latest(self) -> None:
-        """Rebuild latest_by_user from stored records after a restart."""
+        """Rebuild latest_by_user from identity-valid stored records."""
         for user in self.users:
-            record = self.store.latest_assigned_for_user(user.user_id)
+            record = self._latest_identity_valid_record(user.user_id)
             if record is not None:
                 self.latest_by_user[user.user_id] = measurement_from_record(record)
 
@@ -461,18 +476,21 @@ class RealmeScaleCoordinator:
             _LOGGER.exception("Failed to handle scale notification")
 
     def _process_packet(self, data: bytes) -> None:
-        """Decode, attribute, compute and publish one measurement packet."""
+        """Decode, identify, compute and publish one measurement packet."""
         decoded = decode_measurement(data, self.mac)
         if decoded is None:
             return
 
-        user, candidates = self._attribute(decoded)
+        result = self._identify(decoded)
+        user = self._user_by_id.get(result.user_id) if result.user_id else None
         measurement = ScaleMeasurement(
             weight_kg=decoded.weight_kg,
             measured_at=decoded.measured_at,
             impedance=decoded.impedance,
             raw=decoded.raw,
         )
+        measurement.assignment_method = result.method
+        measurement.confidence = result.confidence
 
         status = STATUS_UNKNOWN
         if user is not None:
@@ -491,66 +509,166 @@ class RealmeScaleCoordinator:
                     measurement.lean_body_mass_kg,
                     measurement.visceral_fat,
                 ) = metrics
-            self.latest_by_user[user.user_id] = measurement
-        elif candidates:
-            # Ambiguous but plausible owners -> remember them so a prompt
-            # (dashboard / notification) can offer one-tap assignment.
-            measurement.candidate_user_ids = candidates
+            # Identity-valid only: a wrong out-of-range assignment must never
+            # become this user's visible latest or identity baseline.
+            if self._identity_valid_for(user, decoded.weight_kg):
+                self.latest_by_user[user.user_id] = measurement
+        elif result.candidates:
+            # Plausible owners -> prompt (dashboard / notification) may offer
+            # one-tap assignment later.
+            measurement.candidate_user_ids = result.candidates
 
+        self.last_measurement = measurement
         record = record_from_measurement(measurement, status=status)
         self._publish_measurement(measurement, record, status)
 
-        # Persist in the background; measurement handling must stay sync.
         if self._store_loaded:
             asyncio.create_task(self._async_persist_record(record))
 
-    def _attribute(
-        self, decoded: DecodedMeasurement
-    ) -> tuple[ScaleUser | None, tuple[str, ...]]:
-        """Attribute a decoded measurement; see assignment module policy.
+    # ------------------------------------------------------------------
+    # Identity model & automatic identification
+    # ------------------------------------------------------------------
 
-        Returns ``(user, candidate_ids)`` where ``user`` is set for a
-        confident match and ``candidate_ids`` lists plausible owners when
-        the reading is ambiguous (both never set for the same reading).
+    def _configured_center(self, user: ScaleUser) -> float | None:
+        """The user's configured identity center (expected/initial weight)."""
+        if user.expected_weight_kg > 0:
+            return user.expected_weight_kg
+        if user.initial_weight > 0:
+            return user.initial_weight
+        return None
+
+    def _effective_tolerances(
+        self, user: ScaleUser
+    ) -> tuple[float, float]:
+        weight_tol = user.weight_tolerance_kg or self.tolerance_kg
+        impedance_tol = (
+            user.impedance_tolerance_ohm or self.impedance_tolerance_ohm
+        )
+        return weight_tol, impedance_tol
+
+    def _identity_valid_for(self, user: ScaleUser, weight_kg: float) -> bool:
+        """Whether a weight is consistent with this user's identity range.
+
+        Users without a configured center are always treated as valid (their
+        own explicit assignments define them); the anti-poison rule applies
+        once an expected/initial weight is configured.
         """
+        center = self._configured_center(user)
+        if center is None:
+            return True
+        weight_tol, _ = self._effective_tolerances(user)
+        return weight_tol <= 0 or abs(center - weight_kg) <= weight_tol
+
+    def _rebuild_identity(self) -> None:
+        """Rebuild identity baselines from *identity-valid* stored records.
+
+        The newest valid record per user provides the impedance reference
+        (and a weight fallback when no expected/initial weight is set).  An
+        out-of-range assignment can never become the baseline.
+        """
+        rebuilt: dict[str, dict[str, float | int | None]] = {}
+        for user in self.users:
+            center = self._configured_center(user)
+            weight_tol, _ = self._effective_tolerances(user)
+            for record in reversed(self.store.records()):
+                if record.get("status") != STATUS_ASSIGNED:
+                    continue
+                if record.get("user_id") != user.user_id:
+                    continue
+                weight = float(record["weight_kg"])
+                valid = (
+                    center is None
+                    or weight_tol <= 0
+                    or abs(center - weight) <= weight_tol
+                )
+                if not valid:
+                    continue
+                rebuilt[user.user_id] = {
+                    "weight": weight,
+                    "impedance": (
+                        int(record["impedance"])
+                        if record.get("impedance") is not None
+                        else None
+                    ),
+                }
+                break
+        self._identity_state = rebuilt
+
+    def _identity_for(self, user: ScaleUser) -> UserIdentity | None:
+        """Resolve one user's identity reference for the engine."""
+        state = self._identity_state.get(user.user_id)
+        center = self._configured_center(user)
+        if center is None and state is not None:
+            center = state.get("weight")  # type: ignore[assignment]
+        if center is None:
+            return None
+        weight_tol, impedance_tol = self._effective_tolerances(user)
+        return UserIdentity(
+            user_id=user.user_id,
+            center=float(center),
+            weight_tolerance_kg=weight_tol,
+            baseline_impedance_ohm=(
+                int(state["impedance"])
+                if state and state.get("impedance") is not None
+                else None
+            ),
+            impedance_tolerance_ohm=impedance_tol,
+        )
+
+    def _latest_identity_valid_record(self, user_id: str) -> dict[str, Any] | None:
+        """Newest stored record that is valid for the user's identity."""
+        user = self._user_by_id.get(user_id)
+        if user is None:
+            return None
+        center = self._configured_center(user)
+        weight_tol, _ = self._effective_tolerances(user)
+        for record in reversed(self.store.records()):
+            if record.get("status") != STATUS_ASSIGNED:
+                continue
+            if record.get("user_id") != user_id:
+                continue
+            weight = float(record["weight_kg"])
+            if (
+                center is None
+                or weight_tol <= 0
+                or abs(center - weight) <= weight_tol
+            ):
+                return record
+        return None
+
+    def _identify(self, decoded: DecodedMeasurement) -> AssignmentResult:
+        """Identify the measured person (never guesses)."""
         if not self.users:
-            return None, ()
+            return AssignmentResult(user_id=None)
         if len(self.users) == 1:
-            return self.users[0], ()
-
-        refs = [UserReadingRef(*self._reading_ref(user)) for user in self.users]
-        result = attribute_measurement(
-            refs,
-            decoded.weight_kg,
-            decoded.impedance,
-            self.tolerance_kg,
-            self.impedance_tolerance_ohm,
-        )
-        if result.user_id is not None:
-            user = self._user_by_id.get(result.user_id)
-            if user is not None:
-                return user, ()
-        return None, result.candidates
-
-    def _reading_ref(self, user: ScaleUser) -> tuple[str, float | None, int | None]:
-        """A user's best-known (weight, impedance) for attribution.
-
-        Uses the user's latest attributed measurement when available, falling
-        back to their configured initial weight (no impedance) otherwise.
-        """
-        latest = self.latest_by_user.get(user.user_id)
-        if latest is not None:
-            return user.user_id, latest.weight_kg, latest.impedance
-        return (
-            user.user_id,
-            user.initial_weight if user.initial_weight > 0 else None,
-            None,
-        )
+            # Single-user scale: easy, no heuristics needed.
+            user = self.users[0]
+            state = self._identity_state.get(user.user_id)
+            _, impedance_tol = self._effective_tolerances(user)
+            has_impedance = (
+                decoded.impedance is not None
+                and state is not None
+                and state.get("impedance") is not None
+                and impedance_tol > 0
+            )
+            return AssignmentResult(
+                user_id=user.user_id,
+                method=(
+                    METHOD_WEIGHT_IMPEDANCE if has_impedance else METHOD_WEIGHT
+                ),
+            )
+        identities = [
+            identity
+            for user in self.users
+            if (identity := self._identity_for(user)) is not None
+        ]
+        return identify(identities, decoded.weight_kg, decoded.impedance)
 
     async def _async_persist_record(self, record: dict[str, Any]) -> None:
         """Write one record; failures must never affect the live session."""
         try:
             await self.store.async_add(record)
+            self._rebuild_identity()
         except Exception:  # pragma: no cover
             _LOGGER.exception("Failed to persist measurement record")
         self._async_notify_listeners()
@@ -572,6 +690,8 @@ class RealmeScaleCoordinator:
             "weight": round(measurement.weight_kg, 2),
             "measured_at": measurement.measured_at.isoformat(),
         }
+        if measurement.impedance is not None:
+            event_data["impedance"] = measurement.impedance
         if status == STATUS_ASSIGNED:
             event_data[FIELD_USER_ID] = measurement.user_id
             event_data[FIELD_USER] = measurement.user_name
@@ -587,8 +707,11 @@ class RealmeScaleCoordinator:
                 for candidate in measurement.candidate_user_ids
                 if candidate in self._user_by_id
             ]
+        if measurement.assignment_method:
+            event_data["assignment_method"] = measurement.assignment_method
+        if measurement.confidence is not None:
+            event_data["confidence"] = round(float(measurement.confidence), 2)
         for key in (
-            "impedance",
             "body_fat",
             "muscle",
             "water",
@@ -611,17 +734,23 @@ class RealmeScaleCoordinator:
         """Assign (or re-assign) a stored measurement to ``user``.
 
         Recomputes the BIA figures under the chosen profile and refreshes
-        the affected users' "latest" so sensors stay correct after a
-        re-assignment.  Returns ``(success, message)``.
+        the affected users' "latest" (identity-valid only) so sensors stay
+        correct.  Returns ``(success, message)``.
         """
         record = self.store.record(measurement_id)
         if record is None:
-            return False, f"No stored measurement with id {measurement_id}"
+            return False, (
+                "This measurement no longer exists (it may already have "
+                "been assigned or removed). Return to Measurements and "
+                "try again."
+            )
 
         previous_owner = record.get("user_id")
         measurement = self._measurement_for_record(record, user)
-        # Rewrite the record in place: same id + received order, new owner
-        # and BIA figures recomputed under the assigned user's profile.
+        measurement.assignment_method = "manual"
+        measurement.confidence = None
+        # Rewrite the record in place: same id + received order, new owner,
+        # method and BIA figures recomputed for the assigned user.
         updated = record_from_measurement(
             measurement,
             measurement_id=measurement_id,
@@ -631,25 +760,27 @@ class RealmeScaleCoordinator:
         record.clear()
         record.update(updated)
         await self.store.async_save()
+        self._rebuild_identity()
 
-        # Keep every user's "latest" consistent with the store afterwards
-        # (a re-assignment may have taken a reading away from someone).
+        # Keep every user's "latest" consistent afterwards (a re-assignment
+        # may have taken a reading away from someone).
         for affected in {previous_owner, user.user_id}:
             if affected is not None:
                 self._refresh_latest_from_store(affected)
 
         self._async_notify_listeners()
         _LOGGER.info(
-            "Assigned measurement %s to %s (%.1f kg)",
+            "Manual assignment: measurement_id=%s from=%s to=%s weight=%.1f",
             measurement_id,
-            user.name,
+            previous_owner or "none",
+            user.user_id,
             measurement.weight_kg,
         )
         return True, f"Assigned {measurement_id} to {user.name}"
 
     def _refresh_latest_from_store(self, user_id: str) -> None:
-        """Point a user's latest at their most recent stored record."""
-        record = self.store.latest_assigned_for_user(user_id)
+        """Point a user's latest at their newest identity-valid record."""
+        record = self._latest_identity_valid_record(user_id)
         if record is None:
             self.latest_by_user.pop(user_id, None)
         else:
@@ -697,5 +828,6 @@ class RealmeScaleCoordinator:
         unassigned records that can be attributed to a (new) user later.
         """
         await self.store.async_release_user(user_id)
+        self._rebuild_identity()
         self.latest_by_user.pop(user_id, None)
         self._async_notify_listeners()

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-08
+
+### Architecture (identity model)
+- **Separated concepts**: handshake profile (BLE), configured user (profile),
+  detected user (owner of a measurement) are distinct; "Active user" UI is
+  renamed *Scale handshake profile* everywhere and documented as not being
+  the detected person.
+- **Identity baseline is separate from latest measurement.** Baselines are
+  rebuilt only from *identity-valid* stored records. With an expected weight
+  configured, an out-of-range assignment (e.g. 52 kg handed to a 73 kg
+  user) can never poison the identity range - the next ~52 kg reading still
+  identifies the correct lighter user.
+- Per-user identity fields: **Expected weight (kg)**, **Identification
+  tolerance (kg)**, **Impedance tolerance (Ohm)**; 0 falls back to the
+  global automatic-identification defaults.
+- User devices show only **identity-valid** measurements as their "latest".
+
+### Automatic identification (assignment.py rewrite, pure)
+- Identity-range gating (expected +/- tolerance), impedance as secondary
+  tie-breaker, no-match/ambiguous stay unassigned, single-user easy mode.
+- Returns `method` (`automatic_weight`, `automatic_weight_impedance`,
+  `none`) and `confidence`; both persist on records and are included in the
+  measurement event payload.
+
+### Fixes
+- Canonical flow step name **`assign_pick`** everywhere; the stale
+  `assign_unknown` menu key/step reference is gone (menu key, Python action,
+  strings and translations now all use `assign_pick`).
+- Manual assignment returns a friendly "measurement no longer available"
+  message instead of a raw traceback for stale records.
+
 ## [0.5.1] - 2026-09-08
 
 ### Changed
@@ -205,7 +236,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.3...v0.4.4

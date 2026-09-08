@@ -57,6 +57,14 @@ CONF_HEIGHT: Final = "height"      # cm (float)
 CONF_ACTIVITY_LEVEL: Final = "activity_level"  # openScale ActivityLevel name
 CONF_INITIAL_WEIGHT: Final = "initial_weight"  # kg (float); 0 -> 0xFFFF sentinel
 
+# Identity profile keys (used by the automatic identification engine).
+# expected_weight_kg drives the identity *range* (expected +/- tolerance).
+# A value of 0 means "not configured" -> falls back to initial weight, then
+# to validated history, then the user is not auto-identifiable.
+CONF_EXPECTED_WEIGHT: Final = "expected_weight_kg"
+# Per-user tolerances; 0 means "use the global default".
+CONF_WEIGHT_TOLERANCE: Final = "weight_tolerance_kg"
+
 SEX_MALE: Final = "male"
 SEX_FEMALE: Final = "female"
 

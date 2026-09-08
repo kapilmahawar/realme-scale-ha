@@ -1,128 +1,171 @@
-"""Measurement attribution (pure logic, no HA imports).
+"""Automatic user identification (pure logic, no HA imports).
 
-The RMH2011 scale never identifies who is standing on it, so attribution is
-a heuristic on the signals the scale *does* send: weight and, when present,
-impedance.  Policy (per measurement):
+Separates *identity* from *latest measurement*:
 
-- With a single configured user every measurement belongs to them.
-- A measurement is a candidate for a user when their last reading is within
-  the weight tolerance **and** (when both readings carry impedance) within
-  the impedance tolerance.
-- Exactly one candidate  -> attributed to that user.
-- Zero candidates        -> unassigned ("unknown"), ask the household.
-- Several candidates     -> genuinely ambiguous (e.g. two people at a
-  similar weight); the measurement stays unassigned and the candidates are
-  returned in order of closeness so a confirmation prompt can offer them.
+- Each user has an **identity center** (expected weight; falls back to
+  initial weight / validated history in the coordinator) and a tolerance.
+  Identity lives in ``[center - tol, center + tol]``.
+- A wrong assignment outside that range can never shift the center, so a
+  wrongly assigned ~52 kg record cannot poison a ~73 kg user.
+- Impedance is an optional *secondary* discriminator when weight alone
+  leaves several plausible users.
+
+Hard rules:
+
+- impossible (out-of-range) candidates are rejected,
+- exactly one plausible candidate -> assigned (weight method; impedance is
+  only used to resolve ties),
+- zero candidates -> unassigned,
+- several comparable candidates -> ambiguous / unassigned, never a guess,
+- a single configured user keeps working without heuristics,
+- missing impedance never crashes (weight-only matching).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Assignment methods (also used for record/event payloads).
+METHOD_NONE = "none"
+METHOD_WEIGHT = "automatic_weight"
+METHOD_WEIGHT_IMPEDANCE = "automatic_weight_impedance"
+
 
 @dataclass(frozen=True)
-class UserReadingRef:
-    """One candidate: a user's most recent (weight, impedance) reading.
+class UserIdentity:
+    """One user's resolved identity for a comparison.
 
-    ``weight_kg``/``impedance_ohm`` may fall back to profile data (initial
-    weight); ``None`` means "no usable baseline".
+    ``center``/``weight_tolerance_kg`` are already resolved by the caller
+    (per-user value or global default) and are always present here.
+    ``baseline_impedance_ohm`` is the newest identity-valid measurement's
+    impedance, used only when both sides measured it.
     """
 
     user_id: str
-    weight_kg: float | None = None
-    impedance_ohm: int | None = None
+    center: float
+    weight_tolerance_kg: float
+    baseline_impedance_ohm: int | None = None
+    impedance_tolerance_ohm: float = 0.0
 
 
 @dataclass(frozen=True)
-class Attribution:
-    """Result of attributing one measurement to the user registry."""
+class AssignmentResult:
+    """Outcome of one identification attempt."""
 
     user_id: str | None
-    """Owner id, or ``None`` when the reading stays unassigned."""
-
+    method: str = METHOD_NONE
+    confidence: float | None = None
     candidates: tuple[str, ...] = field(default_factory=tuple)
-    """Plausible owners, nearest first (empty when none or unambiguous)."""
 
     @property
     def is_assigned(self) -> bool:
         return self.user_id is not None
 
 
-def _eligible(
-    ref: UserReadingRef,
+def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
+    return max(low, min(high, value))
+
+
+def _confidence(
     weight_kg: float,
+    user: UserIdentity,
     impedance_ohm: int | None,
-    weight_tolerance_kg: float,
-    impedance_tolerance_ohm: float,
-) -> bool:
-    """Whether a user's baseline is consistent with this reading."""
-    if ref.weight_kg is None:
-        return False
-    if abs(ref.weight_kg - weight_kg) > weight_tolerance_kg:
-        return False
-    # Impedance only discriminates when *both* sides measured it.  It is
-    # noisy enough that a mismatch means "not sure", never "wrong person".
-    impedance_ok = (
-        ref.impedance_ohm is None
-        or impedance_ohm is None
-        or impedance_tolerance_ohm <= 0
-        or abs(ref.impedance_ohm - impedance_ohm) <= impedance_tolerance_ohm
-    )
-    return impedance_ok
-
-
-def attribute_measurement(
-    candidates: list[UserReadingRef],
-    weight_kg: float,
-    impedance_ohm: int | None,
-    weight_tolerance_kg: float,
-    impedance_tolerance_ohm: float,
-) -> Attribution:
-    """Attribute one measurement; see module docstring for the rules."""
-    if not candidates:
-        return Attribution(user_id=None)
-
-    # A one-user scale needs no heuristics: it is always that user.
-    if len(candidates) == 1:
-        return Attribution(user_id=candidates[0].user_id)
-
-    if weight_tolerance_kg <= 0:
-        # Auto-assignment disabled entirely.
-        return Attribution(user_id=None)
-
-    eligible = [
-        ref
-        for ref in candidates
-        if _eligible(
-            ref,
-            weight_kg,
-            impedance_ohm,
-            weight_tolerance_kg,
-            impedance_tolerance_ohm,
+    weight_resolved: bool,
+) -> float:
+    """0..1 plausibility for the winning user (informational)."""
+    weight_ratio = 0.0
+    if user.weight_tolerance_kg > 0:
+        weight_ratio = abs(user.center - weight_kg) / user.weight_tolerance_kg
+    confidence = 1.0 - 0.5 * weight_ratio
+    if (
+        weight_resolved
+        and impedance_ohm is not None
+        and user.baseline_impedance_ohm is not None
+        and user.impedance_tolerance_ohm > 0
+    ):
+        impedance_ratio = (
+            abs(impedance_ohm - user.baseline_impedance_ohm)
+            / user.impedance_tolerance_ohm
         )
+        confidence -= 0.25 * impedance_ratio
+    return _clamp(confidence)
+
+
+def _sort_key(user: UserIdentity, weight_kg: float) -> tuple[float, str]:
+    weight_delta = abs(user.center - weight_kg)
+    normalized = (
+        weight_delta / user.weight_tolerance_kg
+        if user.weight_tolerance_kg > 0
+        else weight_delta
+    )
+    return (normalized, user.user_id)
+
+
+def identify(
+    users: list[UserIdentity],
+    weight_kg: float,
+    impedance_ohm: int | None,
+) -> AssignmentResult:
+    """Identify the person behind a measurement; never guesses."""
+    if not users:
+        return AssignmentResult(user_id=None)
+
+    # A single-user scale needs no heuristics.
+    if len(users) == 1:
+        user = users[0]
+        has_impedance = (
+            impedance_ohm is not None
+            and user.baseline_impedance_ohm is not None
+            and user.impedance_tolerance_ohm > 0
+        )
+        return AssignmentResult(
+            user_id=user.user_id,
+            method=METHOD_WEIGHT_IMPEDANCE if has_impedance else METHOD_WEIGHT,
+            confidence=_confidence(weight_kg, user, impedance_ohm, True),
+        )
+
+    candidates = [
+        user
+        for user in users
+        if user.weight_tolerance_kg > 0
+        and abs(user.center - weight_kg) <= user.weight_tolerance_kg
     ]
 
-    if len(eligible) == 1:
-        return Attribution(user_id=eligible[0].user_id)
+    if len(candidates) == 1:
+        user = candidates[0]
+        return AssignmentResult(
+            user_id=user.user_id,
+            method=METHOD_WEIGHT,
+            confidence=_confidence(weight_kg, user, impedance_ohm, True),
+        )
 
-    if not eligible:
-        return Attribution(user_id=None)
+    if not candidates:
+        return AssignmentResult(user_id=None)
 
-    # Multiple plausible owners -> ambiguous.  Rank by normalised closeness
-    # in (weight, impedance) space so a prompt can offer the best guesses.
-    def _score(ref: UserReadingRef) -> float:
-        dw = (abs(ref.weight_kg - weight_kg) / weight_tolerance_kg) ** 2  # type: ignore[operator]
-        dz = 0.0
-        if (
-            ref.impedance_ohm is not None
-            and impedance_ohm is not None
-            and impedance_tolerance_ohm > 0
-        ):
-            dz = (abs(ref.impedance_ohm - impedance_ohm) / impedance_tolerance_ohm) ** 2
-        return dw + dz
+    # Several users are inside their weight ranges.  Try impedance as the
+    # secondary discriminator when it is available for both sides.
+    if impedance_ohm is not None:
+        impedance_matched = [
+            user
+            for user in candidates
+            if user.baseline_impedance_ohm is not None
+            and user.impedance_tolerance_ohm > 0
+            and abs(impedance_ohm - user.baseline_impedance_ohm)
+            <= user.impedance_tolerance_ohm
+        ]
+        if len(impedance_matched) == 1:
+            user = impedance_matched[0]
+            return AssignmentResult(
+                user_id=user.user_id,
+                method=METHOD_WEIGHT_IMPEDANCE,
+                confidence=_confidence(weight_kg, user, impedance_ohm, True),
+            )
+        if len(impedance_matched) > 1:
+            candidates = impedance_matched
 
-    eligible.sort(key=_score)
-    return Attribution(
+    ordered = sorted(candidates, key=lambda user: _sort_key(user, weight_kg))
+    return AssignmentResult(
         user_id=None,
-        candidates=tuple(ref.user_id for ref in eligible),
+        method=METHOD_NONE,
+        candidates=tuple(user.user_id for user in ordered),
     )

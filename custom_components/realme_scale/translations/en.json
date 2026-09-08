@@ -20,7 +20,10 @@
           "age": "Age",
           "height": "Height (cm)",
           "activity_level": "Activity level",
-          "initial_weight": "Initial weight (kg, 0 = new user)"
+          "initial_weight": "Initial weight (kg, 0 = new user)",
+          "expected_weight_kg": "Expected weight (kg)",
+          "weight_tolerance_kg": "Identification tolerance (kg)",
+          "impedance_tol_ohm": "Impedance tolerance (Ohm)"
         }
       }
     },
@@ -43,9 +46,9 @@
           "add_user": "Add User",
           "edit_user": "Edit User",
           "remove_user": "Remove User",
-          "active_user": "Active User",
+          "active_user": "Scale handshake profile",
           "settings": "Assignment Settings",
-          "assign_unknown": "Assign Unknown Measurement",
+          "assign_pick": "Assign Unknown Measurement",
           "reassign_measurement": "Reassign Measurement",
           "save_close": "Save & Close"
         }
@@ -59,7 +62,10 @@
           "age": "Age",
           "height": "Height (cm)",
           "activity_level": "Activity level",
-          "initial_weight": "Initial weight (kg, 0 = new user)"
+          "initial_weight": "Initial weight (kg, 0 = new user)",
+          "expected_weight_kg": "Expected weight (kg)",
+          "weight_tolerance_kg": "Identification tolerance (kg)",
+          "impedance_tol_ohm": "Impedance tolerance (Ohm)"
         }
       },
       "edit_user": {
@@ -78,7 +84,10 @@
           "age": "Age",
           "height": "Height (cm)",
           "activity_level": "Activity level",
-          "initial_weight": "Initial weight (kg, 0 = new user)"
+          "initial_weight": "Initial weight (kg, 0 = new user)",
+          "expected_weight_kg": "Expected weight (kg)",
+          "weight_tolerance_kg": "Identification tolerance (kg)",
+          "impedance_tol_ohm": "Impedance tolerance (Ohm)"
         }
       },
       "remove_user": {
@@ -96,18 +105,18 @@
         }
       },
       "active_user": {
-        "title": "Active user",
-        "description": "The active user's profile is sent to the scale when it connects. Currently: {active}.",
+        "title": "Scale handshake profile",
+        "description": "This profile's sex / age / height is written into the Bluetooth handshake when the scale connects. It is NOT the person detected for a measurement - automatic identification decides that. Currently: {active}.",
         "data": {
           "user": "User"
         }
       },
       "settings": {
-        "title": "Auto-assignment",
-        "description": "A measurement is given to a user when their last reading is within the weight tolerance (kg) and, when both readings carry impedance, within the impedance tolerance (Ohm). A reading matching no one - or matching several people - stays unassigned until you confirm it. 0 disables an axis.",
+        "title": "Automatic identification",
+        "description": "Defaults used when a user does not set their own. A measurement is given to a user when its weight is inside their identification range (and, when both readings carry impedance, inside the impedance tolerance). A reading matching no one - or matching several people - stays unassigned; nothing is guessed. 0 disables an axis.",
         "data": {
-          "auto_assign_kg": "Weight tolerance (kg)",
-          "impedance_tol_ohm": "Impedance tolerance (Ohm)"
+          "auto_assign_kg": "Default weight tolerance (kg)",
+          "impedance_tol_ohm": "Default impedance tolerance (Ohm)"
         }
       },
       "assign_pick": {
