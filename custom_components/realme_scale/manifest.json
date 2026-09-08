@@ -3,39 +3,23 @@
   "name": "Realme Smart Scale",
   "codeowners": [],
   "config_flow": true,
-  "dependencies": ["bluetooth"],
+  "dependencies": ["bluetooth_adapters"],
   "documentation": "https://github.com/kapilmahawar/realme-scale-ha",
   "issue_tracker": "https://github.com/kapilmahawar/realme-scale-ha/issues",
   "iot_class": "local_push",
   "integration_type": "device",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "bluetooth": [
     {
       "service_uuid": "0000a602-0000-1000-8000-00805f9b34fb"
     },
     {
-      "connectable": false,
-      "service_uuid": "0000a602-0000-1000-8000-00805f9b34fb"
-    },
-    {
       "local_name": "realme*scale*"
     },
     {
       "local_name": "Realme*Scale*"
     },
     {
-      "local_name": "REALME*SCALE*"
-    },
-    {
-      "connectable": false,
-      "local_name": "realme*scale*"
-    },
-    {
-      "connectable": false,
-      "local_name": "Realme*Scale*"
-    },
-    {
-      "connectable": false,
       "local_name": "REALME*SCALE*"
     }
   ]

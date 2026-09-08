@@ -26,7 +26,8 @@
     },
     "abort": {
       "already_configured": "This scale is already configured.",
-      "not_supported": "This device does not look like a Realme Smart Scale."
+      "not_supported": "This device does not look like a Realme Smart Scale.",
+      "not_connectable": "The Realme Smart Scale was discovered, but Home Assistant cannot connect to it. Make sure a connectable Bluetooth adapter or an active-connection proxy is in range of the scale."
     },
     "error": {
       "name_required": "Please enter a user name.",
@@ -37,16 +38,16 @@
     "step": {
       "menu": {
         "title": "Users & measurements",
-        "description": "{count} user(s) configured - {pending} unassigned measurement(s). Choose what you want to do. Changes are applied when you pick \"Save and close\".",
+        "description": "Configured users: {count}\nUnknown measurements: {pending}\nManage Realme Smart Scale users and measurement assignment. Changes are applied when you pick \"Save & Close\".",
         "menu_options": {
-          "add_user": "Add user",
-          "edit_user": "Edit user",
-          "remove_user": "Delete user",
-          "active_user": "Choose active user (handshake profile)",
-          "settings": "Auto-assignment settings",
-          "assign_unknown": "Assign unassigned measurements to a user",
-          "reassign_measurement": "Reassign a recent measurement to another user",
-          "save_close": "Save and close"
+          "add_user": "Add User",
+          "edit_user": "Edit User",
+          "remove_user": "Remove User",
+          "active_user": "Active User",
+          "settings": "Assignment Settings",
+          "assign_unknown": "Assign Unknown Measurement",
+          "reassign_measurement": "Reassign Measurement",
+          "save_close": "Save & Close"
         }
       },
       "add_user": {

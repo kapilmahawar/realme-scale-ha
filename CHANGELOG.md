@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-08
+
+### Changed
+- **Options Flow follows the current HA API**: `async_get_options_flow` is a
+  `@staticmethod @callback` synchronous hook returning a no-argument
+  `RealmeScaleOptionsFlow()`; the flow reads the entry from the parent
+  `OptionsFlow.config_entry` property.
+- **Bluetooth metadata per current guidance**: manifest depends on
+  `bluetooth_adapters` (not `bluetooth`) and only advertises connectable
+  discovery matchers (service UUID + scale-like names) — no `connectable:
+  false` entries, since the RMH2011 needs an active GATT session.
+- **Discovery rejects non-connectable sources** (`not_connectable` abort
+  with a clear message/translation) instead of half-configuring a scale it
+  cannot connect to.
+- Menu wording: *Add User / Edit User / Remove User / Active User /
+  Assignment Settings / Assign Unknown Measurement / Reassign Measurement /
+  Save & Close*, first screen shows "Configured users: {count} / Unknown
+  measurements: {pending}".
+- README: "Adding additional users" section + Active User vs Assigned User
+  explanation.
+
+### Added
+- Regression/structure tests for the options flow:
+  `tests/test_user_management.py` (step & hook presence, translation
+  coverage for every menu action/step/error/abort, and the full add → edit →
+  remove → zero-users storage journey).
+
 ## [0.5.0] - 2026-09-08
 
 ### Changed
@@ -178,7 +205,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.2...v0.4.3

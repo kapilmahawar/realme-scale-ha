@@ -182,6 +182,36 @@ yet, so it lands in *Unassigned measurements* — assign it once and from then
 on that user is recognised automatically (as long as weights stay separated
 or the impedance fingerprint discriminates).
 
+## Adding additional users
+
+1. Open **Settings → Devices & services**.
+2. Open the **Realme Smart Scale** integration (the configured entry, e.g.
+   `Realme Smart Scale (AA:BB:CC:DD:EE:FF)`).
+3. Select **Configure** (the entry's Options — ⋮ / gear).
+4. Select **Add User**.
+5. Enter the user's profile: name (or pick their HA Person to auto-fill),
+   sex, age, height, activity level, optional initial weight.
+6. **Repeat** for every additional user (all edits are kept in a working
+   copy while the menu is open).
+7. Select **Save & Close** — the entry reloads, a device/sensor set appears
+   per user, and every user immediately joins automatic assignment.
+
+No reinstall, re-discovery, YAML or restart is required to add users.
+
+### Active User vs. Assigned User
+
+- **Active User** (handshake profile): the *one* profile (sex/age/height/
+  activity/initial weight) written into the scale's BLE handshake when it
+  connects. Change it via the menu or the *Active user* select entity.
+- **Assigned User**: the HA user a measurement belongs to after automatic
+  attribution.
+
+They are deliberately independent: with *Active User = Alice*, a weighing
+from your carol can still be attributed to her profile (unique weight +
+impedance match) — the handshake profile does not own measurements. Only the
+active profile is sent to the scale; HA never asks the scale to know about
+every configured user.
+
 ## Per-user dashboards
 
 Nothing extra is needed for dashboards: each user is a **device** with its

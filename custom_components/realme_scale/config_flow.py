@@ -31,7 +31,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_ADDRESS, CONF_NAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from .const import (
     ACTIVITY_LEVELS,
@@ -283,6 +283,11 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle the bluetooth discovery step."""
         if not device_matches(discovery_info):
             return self.async_abort(reason="not_supported")
+        if not discovery_info.connectable:
+            # The RMH2011 requires an active GATT session; a source that only
+            # relays advertisements cannot carry the handshake/keep-alive
+            # stream, so refuse rather than half-configure.
+            return self.async_abort(reason="not_connectable")
         self._discovered = discovery_info
         self._address = _mac_from_service(discovery_info)
         self._name = discovery_info.name or DEFAULT_NAME
@@ -367,16 +372,17 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     @staticmethod
+    @callback
     def async_get_options_flow(
         config_entry: ConfigEntry,
     ) -> RealmeScaleOptionsFlow:
         """Return the options flow that manages users & measurements.
 
-        Note: despite the ``async_`` prefix this method is *synchronous* —
-        Home Assistant calls it directly and expects the flow instance, not a
-        coroutine (an async def here produces a 500 on opening Options).
+        Synchronous on purpose: Home Assistant calls this directly and
+        expects the flow instance (an ``async def`` here produced a
+        coroutine that caused a 500 on opening Options).
         """
-        return RealmeScaleOptionsFlow(config_entry)
+        return RealmeScaleOptionsFlow()
 
 
 # ---------------------------------------------------------------------------
@@ -387,9 +393,13 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
 class RealmeScaleOptionsFlow(OptionsFlow):
     """Menu-driven manager for users and the unknown-measurement queue."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize the options flow state."""
-        super().__init__(config_entry)
+    def __init__(self) -> None:
+        """Initialize the options flow state.
+
+        Home Assistant constructs the flow without arguments and exposes the
+        entry through the parent ``OptionsFlow.config_entry`` property.
+        """
+        super().__init__()
         self._users: list[ScaleUser] | None = None
         self._active_user_id: str | None = None
         self._tolerance_kg: float = DEFAULT_AUTO_ASSIGN_KG
