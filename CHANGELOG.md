@@ -8,7 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Repository branding: realme logo added as `icon.png`/`logo.png`.
+- Repository branding: realme logo added as repo-root `icon.png`/`logo.png`
+  (HACS) and as component brand assets
+  `custom_components/realme_scale/brand/{icon,logo}{,@2x}.png` for
+  Home Assistant 2026.3+.
 - README: AI-use disclosure and contributor credits (DeepSeek).
 
 ### Fixed
