@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-07
+
 ### Added
 - CI: GitHub Actions workflow runs the pure-python test suite on push/PR.
 - **HA People integration**: user setup/edit forms offer a dropdown of
@@ -46,6 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for attribution, record serialization and user-options
   parsing/migration (`tests/test_assignment.py`, `test_records.py`,
   `test_options.py`).
+
+### Fixed
+- **Config flow 500 on current Home Assistant**: the manual MAC field no
+  longer uses `cv.matches_regex` (newer schema serializers reject it); the
+  MAC is validated in code instead.
+- **Discovery** no longer matches unrelated realme BLE devices
+  (see "Discovery filtering" above).
+- Import of the measurement-id constant in `store.py` tidied up.
 
 ### Changed
 - Old single-profile entries migrate transparently: the flat profile
@@ -87,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.1...v0.3.0
 [0.1.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kapilmahawar/realme-scale-ha/releases/tag/v0.1.0
