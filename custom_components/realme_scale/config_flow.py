@@ -443,6 +443,17 @@ class RealmeScaleOptionsFlow(OptionsFlow):
             },
         )
 
+    async def async_step_menu(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Re-render the menu when the user navigates back to it.
+
+        Home Assistant re-enters the flow at the last *shown* step when the
+        Back button is pressed; ``async_step_init`` registered the menu under
+        the step id ``menu``, so a handler with that name must exist.
+        """
+        return await self.async_step_init(user_input)
+
     # -- add / edit / remove users ----------------------------------------
 
     async def async_step_add_user(

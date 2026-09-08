@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository branding: realme logo added as `icon.png`/`logo.png`.
 - README: AI-use disclosure and contributor credits (DeepSeek).
 
+### Fixed
+- Integration **Help** link now points to this repository's documentation
+  (was the upstream openScale repo).
+- Options-flow **Back** navigation no longer raises `not_implemented`
+  (missing `async_step_menu` handler for the menu step).
+
 ## [0.4.0] - 2026-09-07
 
 ### Added
