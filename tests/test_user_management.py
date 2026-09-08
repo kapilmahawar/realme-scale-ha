@@ -85,6 +85,59 @@ def test_options_flow_exposes_all_steps() -> None:
         assert step in methods, f"{step} missing from RealmeScaleOptionsFlow"
 
 
+def test_action_reassign_is_reassign_pick() -> None:
+    """BUG 1 regression: ACTION_REASSIGN must resolve to reassign_pick."""
+    actions = _module_constants(_flow_ast())
+    assert actions["ACTION_REASSIGN"] == "reassign_pick"
+    assert actions["ACTION_ASSIGN"] == "assign_pick"
+
+
+def test_every_menu_option_points_to_implemented_handler() -> None:
+    """BUG 1: no menu option may navigate to a missing step."""
+    tree = _flow_ast()
+    actions = _module_constants(tree)
+    methods = _class_methods(tree, "RealmeScaleOptionsFlow").get(
+        "RealmeScaleOptionsFlow", set()
+    )
+    assert actions, "no ACTION_* constants parsed"
+    values = list(actions.values())
+    assert len(set(values)) == len(values), "duplicate menu step ids"
+    for constant, step_id in actions.items():
+        assert f"async_step_{step_id}" in methods, (
+            f"{constant} -> async_step_{step_id} is missing"
+        )
+    for language_file in (STRINGS, EN):
+        data = json.loads(language_file.read_text(encoding="utf-8"))
+        menu_options = data["options"]["step"]["menu"]["menu_options"]
+        assert set(actions.values()) <= set(menu_options), (
+            f"{language_file.name}: menu label missing for {sorted(actions.values())}"
+        )
+
+
+def test_no_stale_navigation_ids() -> None:
+    """assign_unknown / reassign_measurement must not navigate anywhere."""
+    for path in (CONFIG_FLOW, STRINGS, EN):
+        text = path.read_text(encoding="utf-8")
+        assert "reassign_measurement" not in text, path.name
+        assert "assign_unknown" not in text, path.name
+
+
+def test_setup_entry_not_gated_on_ble_reachability() -> None:
+    """BUG 2: async_setup_entry must start without the scale being online."""
+    init_path = ROOT / "custom_components" / "realme_scale" / "__init__.py"
+    init_text = init_path.read_text(encoding="utf-8")
+    assert "ConfigEntryNotReady" not in init_text
+    assert "async_resolve_ble_device" not in init_text
+    assert "await coordinator.async_start()" in init_text
+
+    # The coordinator keeps its background retry loop (unchanged behavior).
+    coordinator_text = (
+        ROOT / "custom_components" / "realme_scale" / "coordinator.py"
+    ).read_text(encoding="utf-8")
+    assert "async_resolve_ble_device" in coordinator_text
+    assert "_run_connection_loop" in coordinator_text
+
+
 def test_options_flow_hook_is_callback_and_sync() -> None:
     """async_get_options_flow must exist, be decorated @callback and sync."""
     tree = _flow_ast()

@@ -71,7 +71,7 @@ ACTION_REMOVE_USER = "remove_user"
 ACTION_ACTIVE_USER = "active_user"
 ACTION_SETTINGS = "settings"
 ACTION_ASSIGN = "assign_pick"
-ACTION_REASSIGN = "reassign_measurement"
+ACTION_REASSIGN = "reassign_pick"
 ACTION_SAVE = "save_close"
 
 # Local schema field names (not stored in options).

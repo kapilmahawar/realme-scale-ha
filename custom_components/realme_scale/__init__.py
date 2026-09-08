@@ -5,12 +5,9 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
-from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth import BluetoothReachabilityIntent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
@@ -74,32 +71,22 @@ def _targeted_coordinators(
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> bool:
-    """Set up Realme Smart Scale from a config entry."""
-    coordinator = RealmeScaleCoordinator(hass, entry)
+    """Set up Realme Smart Scale from a config entry.
 
-    # If HA has never seen the scale as connectable, the GATT session cannot
-    # be established; surface a helpful error instead of spinning forever.
-    if not await coordinator.async_resolve_ble_device():
-        raise ConfigEntryNotReady(
-            translation_domain=DOMAIN,
-            translation_key="device_not_found",
-            translation_placeholders={
-                "address": coordinator.address,
-                "reason": bluetooth.async_address_reachability_diagnostics(
-                    hass,
-                    coordinator.address,
-                    BluetoothReachabilityIntent.CONNECTION,
-                ),
-            },
-        )
+    Setup must never depend on the scale being reachable right now: the
+    coordinator owns the BLE lifecycle and keeps retrying in the background
+    until the scale appears.  This keeps Options-flow saves/reloads working
+    while the scale is asleep or offline.
+    """
+    coordinator = RealmeScaleCoordinator(hass, entry)
 
     await coordinator.async_start()
 
     entry.runtime_data = coordinator
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    # Reload when options (users / active user / tolerance) change, so new
-    # user devices appear and the new handshake profile takes effect.
+    # Reload when options (users / handshake profile / tolerances) change,
+    # so new user devices appear and the new handshake profile takes effect.
     entry.async_on_unload(
         entry.add_update_listener(_async_options_updated)
     )

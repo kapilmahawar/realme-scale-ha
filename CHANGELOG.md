@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-08
+
+### Fixed
+- **Options → Reassign menu UnknownStep**: `ACTION_REASSIGN` now resolves to
+  `reassign_pick` (canonical step), matching `async_step_reassign_pick`;
+  the stale `reassign_measurement` menu key/label reference was removed from
+  code and both translation files. `assign_pick` remains the canonical
+  assign step.
+- **Save & Close while the scale is asleep/offline no longer fails**:
+  `async_setup_entry()` no longer refuses to start when the scale is not
+  currently reachable (`async_resolve_ble_device()` gate removed). The
+  coordinator keeps its background BLE retry loop, so config saves/reloads
+  always persist and the scale reconnects when it becomes available.
+
+### Added
+- Regression/structure tests: `ACTION_REASSIGN == reassign_pick`, every menu
+  option maps to an implemented `async_step_*` handler, no stale
+  `assign_unknown`/`reassign_measurement` navigation references remain, and
+  `async_setup_entry` is not gated on BLE reachability while the
+  coordinator retry loop is preserved.
+
 ## [0.6.0] - 2026-09-08
 
 ### Architecture (identity model)

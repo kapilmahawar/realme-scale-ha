@@ -43,14 +43,14 @@
         "title": "Users & measurements",
         "description": "Configured users: {count}\nUnknown measurements: {pending}\nManage Realme Smart Scale users and measurement assignment. Changes are applied when you pick \"Save & Close\".",
         "menu_options": {
-          "add_user": "Add User",
-          "edit_user": "Edit User",
-          "remove_user": "Remove User",
-          "active_user": "Scale handshake profile",
-          "settings": "Assignment Settings",
-          "assign_pick": "Assign Unknown Measurement",
-          "reassign_measurement": "Reassign Measurement",
-          "save_close": "Save & Close"
+          "add_user": "👤 Add user",
+          "edit_user": "✏️ Edit user",
+          "remove_user": "🗑️ Remove user",
+          "active_user": "🔗 Scale handshake profile",
+          "settings": "⚙️ Settings",
+          "assign_pick": "📌 Assign measurement",
+          "reassign_pick": "🔄 Reassign measurement",
+          "save_close": "💾 Save & Close"
         }
       },
       "add_user": {
