@@ -234,6 +234,31 @@ def _mac_from_service(discovery: BluetoothServiceInfoBleak) -> str:
 # Config flow (initial setup)
 # ---------------------------------------------------------------------------
 
+# MAC address pattern for the address step.  Validated in code: newer Home
+# Assistant versions cannot serialize callable schema validators or every
+# vol.In dictionary dropdown into the frontend field list, so the step uses
+# a plain text field that every HA version can render.
+MAC_PATTERN = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+
+
+def _user_step_schema() -> vol.Schema:
+    """Schema for the address step (always a plain, serializable form)."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_ADDRESS): str,
+            vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+        }
+    )
+
+
+def _discovered_hint(discovered: list[BluetoothServiceInfoBleak]) -> str:
+    """Human hint listing currently seen scales (no dropdown needed)."""
+    if not discovered:
+        return "None right now - wake the scale (step on it once) and retry."
+    return ", ".join(
+        f"{discovery.name} ({discovery.address})" for discovery in discovered
+    )
+
 
 class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Realme Smart Scale."""
@@ -260,80 +285,52 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         return await self.async_step_profile()
 
-# MAC address pattern for the manual fallback entry.  Validated in code:
-# newer Home Assistant versions cannot serialize arbitrary callable schema
-# validators (e.g. matches_regex) into the frontend field list.
-MAC_PATTERN = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle a flow initiated by the user (manual fallback).
 
-
-def _user_step_schema(discovered: list[BluetoothServiceInfoBleak]) -> vol.Schema:
-    """Schema for the address step: dropdown when devices are known.
-
-    Otherwise a plain text field; the MAC format is validated in code so the
-    schema stays serializable on every Home Assistant version.
-    """
-    if discovered:
-        return vol.Schema(
-            {
-                vol.Required(CONF_ADDRESS): vol.In(
-                    {
-                        discovery.address.upper(): (
-                            f"{discovery.name} ({discovery.address})"
-                        )
-                        for discovery in discovered
-                    }
-                ),
-            }
-        )
-    return vol.Schema(
-        {
-            vol.Required(CONF_ADDRESS): str,
-            vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+        The address is typed (MAC, validated in code).  Discovered scales are
+        only listed as a hint so the flow works identically whether or not HA
+        currently sees the scale.
+        """
+        discovered = _discovered_devices(self.hass)
+        discovered_by_address = {
+            discovery.address.upper(): discovery for discovery in discovered
         }
-    )
 
+        if user_input is not None:
+            raw_address = str(user_input[CONF_ADDRESS]).strip()
+            address = raw_address.upper()
+            if not MAC_PATTERN.fullmatch(raw_address):
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=_user_step_schema(),
+                    errors={CONF_ADDRESS: "invalid_mac"},
+                    description_placeholders={
+                        "found": str(len(discovered)),
+                        "name": DEFAULT_NAME,
+                        "devices": _discovered_hint(discovered),
+                    },
+                )
+            await self.async_set_unique_id(address)
+            self._abort_if_unique_id_configured()
+            self._address = address
+            if address in discovered_by_address:
+                self._name = discovered_by_address[address].name or DEFAULT_NAME
+            else:
+                self._name = user_input.get(CONF_NAME, DEFAULT_NAME)
+            return await self.async_step_profile()
 
-async def async_step_user(
-    self, user_input: dict[str, Any] | None = None
-) -> ConfigFlowResult:
-    """Handle a flow initiated by the user (manual fallback)."""
-    # Offer discovered devices when available, otherwise let the user
-    # type the MAC (e.g. the scale is asleep / out of advertising range).
-    discovered = _discovered_devices(self.hass)
-    discovered_by_address = {
-        discovery.address.upper(): discovery for discovery in discovered
-    }
-
-    if user_input is not None:
-        raw_address = str(user_input[CONF_ADDRESS]).strip()
-        address = raw_address.upper()
-        if not MAC_PATTERN.fullmatch(raw_address):
-            return self.async_show_form(
-                step_id="user",
-                data_schema=_user_step_schema(discovered),
-                errors={CONF_ADDRESS: "invalid_mac"},
-                description_placeholders={
-                    "found": str(len(discovered)),
-                    "name": DEFAULT_NAME,
-                },
-            )
-        await self.async_set_unique_id(address)
-        self._abort_if_unique_id_configured()
-        self._address = address
-        if address in discovered_by_address:
-            self._name = discovered_by_address[address].name or DEFAULT_NAME
-        else:
-            self._name = user_input.get(CONF_NAME, DEFAULT_NAME)
-        return await self.async_step_profile()
-
-    return self.async_show_form(
-        step_id="user",
-        data_schema=_user_step_schema(discovered),
-        description_placeholders={
-            "found": str(len(discovered)),
-            "name": DEFAULT_NAME,
-        },
-    )
+        return self.async_show_form(
+            step_id="user",
+            data_schema=_user_step_schema(),
+            description_placeholders={
+                "found": str(len(discovered)),
+                "name": DEFAULT_NAME,
+                "devices": _discovered_hint(discovered),
+            },
+        )
 
     async def async_step_profile(
         self, user_input: dict[str, Any] | None = None

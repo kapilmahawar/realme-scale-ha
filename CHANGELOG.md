@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-08
+
+### Fixed
+- **"Add Integration → Realme Smart Scale" reported `not_implemented`**:
+  a refactor had left `async_step_user` / `async_step_profile` defined
+  *outside* the `RealmeScaleConfigFlow` class, so Home Assistant could not
+  find the starting step. The steps are proper class methods again.
+- The address step now always uses a plain, universally serializable MAC
+  text field (discovered scales are shown as a hint instead of a dropdown
+  that some Home Assistant versions cannot render).
+
 ## [0.4.1] - 2026-09-07
 
 ### Changed
@@ -129,7 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.1...v0.3.0
