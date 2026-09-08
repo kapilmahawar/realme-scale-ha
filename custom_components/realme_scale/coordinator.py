@@ -582,6 +582,11 @@ class RealmeScaleCoordinator:
                 for candidate in measurement.candidate_user_ids
                 if candidate in self._user_by_id
             ]
+            event_data["candidate_user_ids"] = [
+                candidate
+                for candidate in measurement.candidate_user_ids
+                if candidate in self._user_by_id
+            ]
         for key in (
             "impedance",
             "body_fat",

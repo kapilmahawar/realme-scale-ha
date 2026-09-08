@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-07
+
+### Added
+- **Derived metric sensors** per user (computed on the fly): BMI, body fat
+  mass (kg), BMR (Schofield/WHO), ideal weight (Devine), protein % (Wang).
+- **Interpretation text sensors** per user: BMI category (WHO), body-fat
+  category (Gallagher age/sex bands), body-water level, visceral-fat
+  rating and a simple body-type heuristic.
+- `realme_scale_measurement` events for unassigned readings now also carry
+  `candidate_user_ids` (parallel to `candidate_users`).
+- **Interactive confirm blueprint** (`blueprints/
+  realme_scale_confirm_measurement.yaml`): push notification with one quick
+  action per likely user; tapping assigns the measurement.
+- README: derived-metrics reference table, medical disclaimer and formula
+  sources.
+- Unit tests for the metrics module (`tests/test_metrics.py`).
+
 ## [0.3.0] - 2026-09-07
 
 ### Added
@@ -97,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.1...v0.3.0
 [0.1.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kapilmahawar/realme-scale-ha/releases/tag/v0.1.0

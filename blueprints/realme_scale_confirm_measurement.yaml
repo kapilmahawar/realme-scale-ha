@@ -1,0 +1,78 @@
+blueprint:
+  name: Realme Smart Scale - confirm an unassigned measurement
+  description: >-
+    When the scale sends a measurement that cannot be attributed to a user
+    automatically (status: unknown), send a push notification with one
+    quick action per likely user. Tapping a user assigns that measurement to
+    them (realme_scale.assign_measurement). Requires the mobile_app
+    integration for the notification actions.
+  domain: automation
+  input:
+    notify_service:
+      name: Notification service
+      description: >-
+        The notify.* service to use, e.g. notify.mobile_app_alice_phone.
+      selector:
+        text:
+      default: notify.mobile_app_phone
+    persistent:
+      name: Keep notification visible
+      description: Whether to keep the notification until it is actioned.
+      selector:
+        boolean:
+      default: false
+
+triggers:
+  - trigger: event
+    event_type: realme_scale_measurement
+    event_data:
+      status: unknown
+  - trigger: event
+    event_type: mobile_app_notification_action
+
+variables:
+  rs_event: "{{ trigger.event.event_type == 'realme_scale_measurement' }}"
+  rs_action: "{{ trigger.event.data.get('action', '') }}"
+  rs_measurement_id: "{{ trigger.event.data.measurement_id }}"
+  rs_weight: "{{ trigger.event.data.weight }}"
+  rs_candidates: "{{ trigger.event.data.get('candidate_users', []) }}"
+  rs_candidate_ids: "{{ trigger.event.data.get('candidate_user_ids', []) }}"
+
+actions:
+  - choose:
+      # Tapping a notification action assigns the embedded measurement.
+      - conditions:
+          - condition: template
+            value_template: "{{ rs_action.startswith('rs_') }}"
+        sequence:
+          - variables:
+              parts: "{{ rs_action.split('_') }}"
+          - service: realme_scale.assign_measurement
+            data:
+              measurement_id: "{{ parts[1] }}"
+              user: "{{ parts[2] }}"
+      # New unassigned measurement -> ask who it was.
+      - conditions:
+          - condition: template
+            value_template: "{{ rs_event }}"
+        sequence:
+          - service: "{{ notify_service }}"
+            data:
+              title: "Scale: {{ '%.1f' | format(rs_weight) }} kg - who was this?"
+              message: >-
+                {% if rs_candidates %}
+                Likely: {{ rs_candidates | join(', ') }}. Tap a name to assign
+                this measurement to them.
+                {% else %}
+                No profile matched this weight. Open the integration options
+                (Assign unassigned measurements) to file it later.
+                {% endif %}
+              data:
+                actions: >-
+                  {{ [{'action': 'rs_' ~ rs_measurement_id ~ '_' ~ rs_candidate_ids[i],
+                       'title': rs_candidates[i]}
+                     for i in range(rs_candidate_ids | length)] }}
+                tag: "realme_scale_{{ rs_measurement_id }}"
+                persistent: "{{ persistent }}"
+
+mode: restart

@@ -87,6 +87,26 @@ The device is named `Realme Smart Scale - <user name>` (entity id e.g.
 attributes `user`, `user_id`, `measured_at` — plus `person` /
 `person_entity_id` when the profile is linked to an HA person.
 
+Each user's device also exposes **derived metric sensors** (computed on the
+fly from the latest reading + profile):
+
+| Entity (on each user's device) | Unit | Notes |
+|---|---|---|
+| `sensor.<name>_bmi` | – | weight / height² |
+| `sensor.<name>_body_fat_mass` | kg | weight × body-fat % |
+| `sensor.<name>_bmr` | kcal/day | Schofield (WHO) resting metabolism |
+| `sensor.<name>_ideal_weight` | kg | Devine formula |
+| `sensor.<name>_protein` | % | Wang constant on lean mass |
+| `sensor.<name>_bmi_category` | text | WHO bands |
+| `sensor.<name>_body_fat_category` | text | age/sex bands (Gallagher) |
+| `sensor.<name>_body_type` | text | heuristic from BMI + fat band |
+| `sensor.<name>_body_water_category` | text | Low / Normal / High |
+| `sensor.<name>_visceral_fat_category` | text | Healthy / Elevated / High |
+
+Sensors that need impedance (body fat & friends) stay unavailable on
+weight-only packets. Sources are listed under *Derived metrics &
+interpretations* below.
+
 On the *scale* device:
 
 | Entity | Notes |
@@ -108,8 +128,9 @@ automations can react without polling entities. The event carries
 `address`, `measurement_id`, `status` (`assigned` | `unknown`), `weight`,
 `measured_at` and — when attributed — `user`/`user_id` plus the locally
 derived metrics. When the reading is ambiguous (`unknown`) but a few users
-plausibly match, `candidate_users` lists them nearest-first. Keep the
-`measurement_id`: it is what you use to assign/`reassign` a measurement.
+plausibly match, `candidate_users` and `candidate_user_ids` list them
+nearest-first. Keep the `measurement_id`: it is what you use to
+assign/`reassign` a measurement.
 
 ## Multiple users & measurement attribution
 
@@ -221,10 +242,47 @@ Useful for templates and automations:
 {% endfor %}
 ```
 
-A "who was that?" confirm flow for unassigned readings: listen for
-`realme_scale_measurement` events with `status: unknown` and call
-`realme_scale.assign_measurement` (measurement_id + user name) from an
-automation / script / notification action.
+### Interactive "who was that?" confirmation (blueprint)
+
+A ready-made blueprint sends a push notification with one quick action per
+likely user when a measurement can't be attributed automatically; tapping a
+name assigns it via `realme_scale.assign_measurement`:
+
+- File: `blueprints/realme_scale_confirm_measurement.yaml`
+- Copy it to `config/blueprints/automation/` (or import the raw file via
+  **Settings → Automations → Blueprints → Import**), then create an
+  automation from it and set your `notify.*` service.
+- Requires the **mobile_app** integration for notification actions. If a
+  platform doesn't support actions, the fallback is the message text +
+  the unassigned-measurements list in the integration options.
+
+## Derived metrics & interpretations
+
+The derived sensors (BMI, BMR, ideal weight, body-fat mass, protein and the
+text categories) use the following standard references:
+
+| Metric | Formula / reference |
+|---|---|
+| BMI | weight / height² |
+| BMI category | WHO classification bands |
+| BMR | Schofield equation, FAO/WHO/UNU 1985, age-stratified (kcal/day) |
+| Ideal weight | Devine (1974): 50/45.5 + 0.91 × (height cm − 152.4) |
+| Body fat mass | weight × body-fat % |
+| Protein | Wang et al.: ~19.5 % of fat-free mass |
+| Body-fat category | Gallagher et al. (2000) sex/age percentage bands |
+| Body-water level | commonly cited hydration ranges (M ~50–65 %, F ~45–60 %) |
+| Visceral-fat rating | Healthy ≤ 9, Elevated 10–14, High ≥ 15 |
+
+These are the same class of estimators used by apps like
+[bodymiscale](https://github.com/dckiller51/bodymiscale)/openScale; the
+weight/impedance core stays the faithful YunmaiLib port.
+
+> ⚠️ **Disclaimer** — This integration is **not a medical device**. All
+> derived metrics (BMI, BMR, body fat, water, protein, visceral fat, body
+> type) are estimations from generic formulas and bioelectrical impedance
+> analysis, provided for personal tracking only. Do not use them to
+> diagnose, treat, or prevent any condition, and don't make significant
+> health decisions based on them.
 
 ### Known quirk (faithful port)
 
