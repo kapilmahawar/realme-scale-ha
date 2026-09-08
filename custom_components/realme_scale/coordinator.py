@@ -689,8 +689,13 @@ class RealmeScaleCoordinator:
             ) = metrics
         return measurement
 
-    async def async_drop_user_records(self, user_id: str) -> None:
-        """Remove stored records of a user that is being deleted."""
-        await self.store.async_drop_user(user_id)
+    async def async_remove_user(self, user_id: str) -> None:
+        """Handle a user being deleted.
+
+        The profile disappears (its "latest" and entities follow on reload),
+        but already-stored measurements are preserved: they become
+        unassigned records that can be attributed to a (new) user later.
+        """
+        await self.store.async_release_user(user_id)
         self.latest_by_user.pop(user_id, None)
         self._async_notify_listeners()

@@ -97,12 +97,19 @@ class MeasurementStore:
         self._records = _prune(self._records)
         await self.async_save()
 
-    async def async_drop_user(self, user_id: str) -> None:
-        """Remove every record belonging to a deleted user."""
-        kept = [
-            r for r in self._records
-            if not (r.get("user_id") == user_id and r.get("status") == "assigned")
-        ]
-        if len(kept) != len(self._records):
-            self._records = _prune(kept)
+    async def async_release_user(self, user_id: str) -> None:
+        """Unassign every record that belonged to a deleted user.
+
+        History is preserved: records stay in the store but become
+        unassigned so they can be attributed to another user later.
+        """
+        changed = False
+        for record in self._records:
+            if record.get("user_id") != user_id:
+                continue
+            record["status"] = "unknown"
+            record.pop("user_id", None)
+            record.pop("user_name", None)
+            changed = True
+        if changed:
             await self.async_save()

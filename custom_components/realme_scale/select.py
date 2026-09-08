@@ -31,9 +31,10 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the active-user select."""
+    """Set up the active-user select (only when a user exists)."""
     coordinator: RealmeScaleCoordinator = entry.runtime_data
-    async_add_entities([RealmeScaleActiveUserSelect(coordinator, entry)])
+    if coordinator.users:
+        async_add_entities([RealmeScaleActiveUserSelect(coordinator, entry)])
 
 
 class RealmeScaleActiveUserSelect(SelectEntity):

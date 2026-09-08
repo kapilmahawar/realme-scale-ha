@@ -183,9 +183,14 @@ def parse_user_options(
 
     Migrates a legacy single-profile entry (flat CONF_* keys, as shipped in
     v0.1.x) into a one-user list so old installs keep working unchanged.
+
+    An explicitly empty ``users`` list is kept empty: the scale may exist
+    with zero configured users (measurements then stay unassigned).
     """
     users_raw = options.get(CONF_USERS)
-    if isinstance(users_raw, list) and users_raw:
+    if isinstance(users_raw, list):
+        # Canonical storage.  Invalid dict entries are skipped; an empty /
+        # all-invalid list legitimately means "no users configured".
         users: list[ScaleUser] = []
         for raw in users_raw:
             if not isinstance(raw, dict):
@@ -195,7 +200,8 @@ def parse_user_options(
                 continue
             users.append(user)
     else:
-        # Legacy flat profile -> a single user with the stable legacy id.
+        # No "users" key at all -> legacy flat profile; migrate it into a
+        # single user with the stable legacy id.
         profile = {key: options.get(key) for key in (
             CONF_USER_NAME, CONF_SEX, CONF_AGE, CONF_HEIGHT,
             CONF_ACTIVITY_LEVEL, CONF_INITIAL_WEIGHT,
@@ -203,13 +209,10 @@ def parse_user_options(
         profile[CONF_USER_ID] = LEGACY_USER_ID
         users = [scale_user_from_profile(profile)]
 
-    if not users:
-        users = [ScaleUser(user_id=LEGACY_USER_ID)]
-
     active_user_id = _safe_str(options.get(CONF_ACTIVE_USER_ID), "")
     known_ids = {user.user_id for user in users}
     if active_user_id not in known_ids:
-        active_user_id = users[0].user_id
+        active_user_id = users[0].user_id if users else None
     tolerance = _safe_float(options.get(CONF_AUTO_ASSIGN_KG), DEFAULT_AUTO_ASSIGN_KG)
     impedance_tol = _safe_float(
         options.get(CONF_IMPEDANCE_TOL_OHM), DEFAULT_IMPEDANCE_TOL_OHM

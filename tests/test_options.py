@@ -85,19 +85,35 @@ def test_bad_activity_level_sanitized() -> None:
     assert parsed.activity_level == "moderate"
 
 
-def test_empty_and_garbage_user_entries_skipped() -> None:
+def test_garbage_user_entries_skipped_leaves_zero_users() -> None:
+    """An explicit (even if all-invalid) users list means zero users."""
     options = {
         "users": [42, None, {}],
         "active_user_id": "",
         "auto_assign_kg": 3.0,
     }
     users, active, tolerance, impedance_tol = parse_user_options(options)
-    # No valid users -> a single fallback user is created.
+    assert users == []
+    assert active is None
+    assert tolerance == 3.0
+    assert impedance_tol == DEFAULT_IMPEDANCE_TOL_OHM
+
+
+def test_zero_users_roundtrip() -> None:
+    """Deleting the last user keeps the scale configured with 0 users."""
+    options = build_user_options([], None, 3.0)
+    users, active, tolerance, _ = parse_user_options(options)
+    assert users == []
+    assert active is None
+    assert tolerance == 3.0
+
+
+def test_legacy_flat_profile_still_migrates() -> None:
+    """Absence of a 'users' key (v0.1 entries) still yields one user."""
+    users, active, _, _ = parse_user_options({"user_name": "Alice"})
     assert len(users) == 1
     assert users[0].user_id == LEGACY_USER_ID
     assert active == LEGACY_USER_ID
-    assert tolerance == 3.0
-    assert impedance_tol == DEFAULT_IMPEDANCE_TOL_OHM
 
 
 def test_profile_serialization_matches_keys() -> None:

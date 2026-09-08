@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-08
+
+### Changed
+- **Multi-user management spec**: the scale stays a single config entry with
+  users as profiles inside it (stable UUID ids, shared BLE coordinator,
+  per-user devices under the scale). Add/edit/delete users from the entry's
+  Options → Users & measurements.
+- **Zero-user support**: the last user may now be deleted; the scale remains
+  configured and measurements arrive as unassigned until a user is added.
+- **Delete confirmation**: deleting a user now asks for explicit confirmation.
+- **History preserved on delete**: a deleted user's stored measurements are
+  kept and become unassigned records (re-attributable later), instead of
+  being dropped.
+- Wording aligned with the spec: *Users / Add user / Edit user / Delete
+  user* throughout the options flow (no per-user "devices" language).
+
+### Fixed
+- `parse_user_options` no longer invents a fallback user when the stored
+  `users` list is explicitly empty (previously blocked zero-user mode).
+
 ## [0.4.4] - 2026-09-08
 
 ### Fixed
@@ -158,7 +178,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.4.1...v0.4.2

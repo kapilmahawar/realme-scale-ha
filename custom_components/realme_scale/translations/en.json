@@ -39,9 +39,9 @@
         "title": "Users & measurements",
         "description": "{count} user(s) configured - {pending} unassigned measurement(s). Choose what you want to do. Changes are applied when you pick \"Save and close\".",
         "menu_options": {
-          "add_user": "Add a user",
-          "edit_user": "Edit a user",
-          "remove_user": "Remove a user",
+          "add_user": "Add user",
+          "edit_user": "Edit user",
+          "remove_user": "Delete user",
           "active_user": "Choose active user (handshake profile)",
           "settings": "Auto-assignment settings",
           "assign_unknown": "Assign unassigned measurements to a user",
@@ -81,10 +81,17 @@
         }
       },
       "remove_user": {
-        "title": "Remove a user",
-        "description": "Removing a user also deletes their stored measurements.",
+        "title": "Delete user",
+        "description": "Pick the user to delete. Their stored measurements are kept and become unassigned.",
         "data": {
           "user": "User"
+        }
+      },
+      "remove_user_confirm": {
+        "title": "Delete {user}?",
+        "description": "Deleting the last user is allowed - the scale stays configured and new readings arrive as unassigned until a user is added. Already stored measurements are kept but become unassigned.",
+        "data": {
+          "confirm_delete": "Yes, delete this user (measurements kept as unassigned)"
         }
       },
       "active_user": {
@@ -124,7 +131,7 @@
     },
     "error": {
       "name_required": "Please enter a user name.",
-      "last_user": "At least one user must remain on this scale.",
+      "confirm_required": "Tick the confirmation box to delete the user.",
       "user_missing": "That measurement is no longer available (it may already have been assigned)."
     }
   },

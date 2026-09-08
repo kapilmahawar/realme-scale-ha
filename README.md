@@ -167,11 +167,15 @@ using the two signals the scale *does* send — weight and impedance:
    confirmed for the first time. Change it with the `select` entity or via
    Options; the scale reconnects to apply it.
 
-Options flow actions: *Add user*, *Edit user*, *Remove user* (deletes their
-records), *Choose active user*, *Auto-assignment settings*, *Assign
-unassigned measurements*, *Reassign a recent measurement*, *Save and
+Options flow actions: *Add user*, *Edit user*, *Delete user* (with a
+confirmation step), *Choose active user*, *Auto-assignment settings*,
+*Assign unassigned measurements*, *Reassign a recent measurement*, *Save and
 close*. Structural changes reload the entry so each user's device
-appears/disappears automatically.
+appears/disappears automatically. Deleting a user keeps their stored
+measurements (they become unassigned and can be re-attributed later); even
+the **last user may be deleted** — the scale stays configured and readings
+arrive as unassigned until a user is added. Changing a user's name edits the
+existing profile (its stable id never changes).
 
 **Tip:** after adding users, each person's *first* weigh-in has no baseline
 yet, so it lands in *Unassigned measurements* — assign it once and from then

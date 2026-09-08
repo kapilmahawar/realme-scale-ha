@@ -75,6 +75,7 @@ ACTION_SAVE = "save_close"
 # Local schema field names (not stored in options).
 FIELD_USER_SELECT = "user"
 FIELD_KEEP_UNASSIGNED = "__keep_unassigned__"
+FIELD_CONFIRM_DELETE = "confirm_delete"
 
 
 def _new_user_id() -> str:
@@ -419,21 +420,21 @@ class RealmeScaleOptionsFlow(OptionsFlow):
         return self._users
 
     def _build_menu(self) -> dict[str, str]:
-        """Menu entries; assign options only appear when there is work."""
-        menu: dict[str, str] = {
-            ACTION_ADD_USER: "add_user",
-            ACTION_EDIT_USER: "edit_user",
-            ACTION_REMOVE_USER: "remove_user",
-            ACTION_ACTIVE_USER: "active_user",
-            ACTION_SETTINGS: "settings",
-        }
+        """Menu entries; user actions appear only when users exist."""
+        menu: dict[str, str] = {ACTION_ADD_USER: "add_user"}
+        users = self._users_or_default()
+        if users:
+            menu[ACTION_EDIT_USER] = "edit_user"
+            menu[ACTION_REMOVE_USER] = "remove_user"
+            menu[ACTION_ACTIVE_USER] = "active_user"
+        menu[ACTION_SETTINGS] = "settings"
         coordinator = self._coordinator()
         if coordinator is None:
             menu[ACTION_SAVE] = "save_close"
             return menu
-        if coordinator.unknown_count:
+        if users and coordinator.unknown_count:
             menu[ACTION_ASSIGN] = "assign_pick"
-        if coordinator.assigned_records(1):
+        if users and coordinator.assigned_records(1):
             menu[ACTION_REASSIGN] = "reassign_pick"
         menu[ACTION_SAVE] = "save_close"
         return menu
@@ -543,20 +544,12 @@ class RealmeScaleOptionsFlow(OptionsFlow):
     async def async_step_remove_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Remove one user (the last user cannot be removed)."""
+        """Pick which user to delete."""
         users = self._users_or_default()
-        errors: dict[str, str] = {}
         if user_input is not None:
             user_id = user_input[FIELD_USER_SELECT]
-            if len(users) <= 1:
-                errors[FIELD_USER_SELECT] = "last_user"
-            else:
-                users[:] = [u for u in users if u.user_id != user_id]
-                self._removed_user_ids.append(user_id)
-                if self._active_user_id == user_id:
-                    self._active_user_id = users[0].user_id if users else None
-                return await self.async_step_init()
-
+            self._edit_user_id = user_id  # reuse slot to carry selection
+            return await self.async_step_remove_user_confirm()
         return self.async_show_form(
             step_id="remove_user",
             data_schema=vol.Schema(
@@ -566,7 +559,43 @@ class RealmeScaleOptionsFlow(OptionsFlow):
                     ),
                 }
             ),
+        )
+
+    async def async_step_remove_user_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm deletion of the selected user.
+
+        Deleting the final user is allowed: the scale stays configured and
+        measurements keep arriving as unassigned until a user is added.
+        Historical measurements are preserved (they become unassigned).
+        """
+        users = self._users_or_default()
+        target_id = self._edit_user_id
+        target = next((u for u in users if u.user_id == target_id), None)
+        if target is None:
+            return await self.async_step_init()
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not user_input.get(FIELD_CONFIRM_DELETE, False):
+                errors["base"] = "confirm_required"
+            else:
+                users[:] = [u for u in users if u.user_id != target_id]
+                self._removed_user_ids.append(target_id)
+                if self._active_user_id == target_id:
+                    self._active_user_id = users[0].user_id if users else None
+                return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="remove_user_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(FIELD_CONFIRM_DELETE, default=False): bool,
+                }
+            ),
             errors=errors,
+            description_placeholders={"user": _user_label(target)},
         )
 
     # -- active user & settings -------------------------------------------
@@ -754,7 +783,7 @@ class RealmeScaleOptionsFlow(OptionsFlow):
         coordinator = self._coordinator()
         if coordinator is not None and self._removed_user_ids:
             for user_id in self._removed_user_ids:
-                await coordinator.async_drop_user_records(user_id)
+                await coordinator.async_remove_user(user_id)
 
         return self.async_create_entry(
             title="",
