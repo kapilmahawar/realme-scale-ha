@@ -25,8 +25,8 @@ import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, date, datetime, timezone
+from typing import Any, Final
 
 from .bia import YunmaiBia
 from .const import (
@@ -35,6 +35,7 @@ from .const import (
     CONF_ACTIVITY_LEVEL,
     CONF_AGE,
     CONF_AUTO_ASSIGN_KG,
+    CONF_DATE_OF_BIRTH,
     CONF_EXPECTED_WEIGHT,
     CONF_HEIGHT,
     CONF_IMPEDANCE_TOL_OHM,
@@ -105,7 +106,13 @@ class ScaleUser:
     # dashboards can be built around the people HA already knows.
     person_entity_id: str = ""
     sex: str = SEX_MALE            # "male" | "female"
+    # Legacy age in years. Kept for profiles created before date-of-birth
+    # support; when ``date_of_birth`` is set the current age is derived from
+    # it instead and this field is only a migration fallback.
     age: int = 30
+    # ISO date "YYYY-MM-DD". Empty string means "not configured yet" (the
+    # profile keeps using the legacy age until the user provides a DOB).
+    date_of_birth: str = ""
     height_cm: float = 175.0
     activity_level: str = "moderate"
     initial_weight: float = 0.0    # kg; <= 0 means "new user" (0xFFFF sentinel)
@@ -121,6 +128,72 @@ class ScaleUser:
     def sex_int(self) -> int:
         """1 = male, 0 = female (YunmaiLib convention)."""
         return 1 if self.is_male() else 0
+
+    def current_age(self, on: date | None = None) -> int:
+        """The user's age in whole years on ``on`` (default: today).
+
+        Derived from ``date_of_birth`` when it is configured; otherwise the
+        legacy stored ``age`` is used (pre-DOB profiles keep working without
+        any migration step). An unparseable / future DOB falls back to the
+        legacy age so corrupt data can never crash profile use.
+        """
+        dob = parse_dob(self.date_of_birth)
+        if dob is not None:
+            today = on or _local_today()
+            if dob <= today:
+                return age_on_date(dob, today)
+            return self.age  # future DOB (invalid input) -> legacy fallback
+        return self.age
+
+
+def _local_today() -> date:
+    """Today in the host's local time zone (pure default; HA callers pass
+    their own time-zone-aware date explicitly)."""
+    return datetime.now(timezone.utc).astimezone().date()
+
+
+def parse_dob(value: Any) -> date | None:
+    """Parse an ISO ``YYYY-MM-DD`` DOB string; ``None`` when invalid."""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
+def age_on_date(dob: date, on: date) -> int:
+    """Whole years completed by ``on`` (birthday-aware).
+
+    Never ``on.year - dob.year`` alone: that over-counts before the birthday
+    in the current year.
+    """
+    return on.year - dob.year - ((on.month, on.day) < (dob.month, dob.day))
+
+
+# Minimum plausible birth year: rejects obvious typos (e.g. "0090") without
+# being restrictive for real users (covers anyone born after 1900).
+MIN_DOB_YEAR: Final = 1900
+
+
+def dob_error(value: Any, on: date | None = None) -> str | None:
+    """Validate a raw DOB input; return an error key or ``None``.
+
+    Error keys (translated by the flows):
+    - ``dob_required``  -> empty input
+    - ``dob_invalid``   -> not a real YYYY-MM-DD date / implausibly old
+    - ``dob_future``    -> in the future
+    """
+    if value is None or str(value).strip() == "":
+        return "dob_required"
+    dob = parse_dob(value)
+    if dob is None or dob.year < MIN_DOB_YEAR:
+        return "dob_invalid"
+    if dob > (on or _local_today()):
+        return "dob_future"
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -155,12 +228,15 @@ def _valid_activity(value: str) -> str:
 
 def scale_user_from_profile(values: Mapping[str, Any]) -> ScaleUser:
     """Build a ScaleUser from a stored profile dict (any key subset ok)."""
+    dob_raw = _safe_str(values.get(CONF_DATE_OF_BIRTH), "")
+    dob = parse_dob(dob_raw)
     return ScaleUser(
         user_id=_safe_str(values.get(CONF_USER_ID), ""),
         name=_safe_str(values.get(CONF_USER_NAME), ""),
         person_entity_id=_safe_str(values.get(CONF_PERSON_ENTITY), ""),
         sex=_safe_str(values.get(CONF_SEX), SEX_MALE),
         age=_safe_int(values.get(CONF_AGE), 30),
+        date_of_birth=dob.isoformat() if dob is not None else "",
         height_cm=_safe_float(values.get(CONF_HEIGHT), 175.0),
         activity_level=_valid_activity(
             _safe_str(values.get(CONF_ACTIVITY_LEVEL), "moderate")
@@ -175,13 +251,17 @@ def scale_user_from_profile(values: Mapping[str, Any]) -> ScaleUser:
 
 
 def scale_user_to_profile(user: ScaleUser) -> dict[str, Any]:
-    """Serialize a ScaleUser into the canonical stored profile dict."""
-    return {
+    """Serialize a ScaleUser into the canonical stored profile dict.
+
+    ``date_of_birth`` is the source of truth when configured (age is derived
+    from it and therefore not stored).  Profiles without a DOB keep the
+    legacy ``age`` key so pre-DOB installs load unchanged.
+    """
+    profile = {
         CONF_USER_ID: user.user_id,
         CONF_USER_NAME: user.name,
         CONF_PERSON_ENTITY: user.person_entity_id,
         CONF_SEX: user.sex,
-        CONF_AGE: user.age,
         CONF_HEIGHT: user.height_cm,
         CONF_ACTIVITY_LEVEL: user.activity_level,
         CONF_INITIAL_WEIGHT: user.initial_weight,
@@ -189,6 +269,11 @@ def scale_user_to_profile(user: ScaleUser) -> dict[str, Any]:
         CONF_WEIGHT_TOLERANCE: user.weight_tolerance_kg,
         CONF_IMPEDANCE_TOL_OHM: user.impedance_tolerance_ohm,
     }
+    if user.date_of_birth:
+        profile[CONF_DATE_OF_BIRTH] = user.date_of_birth
+    else:
+        profile[CONF_AGE] = user.age
+    return profile
 
 
 def parse_user_options(
@@ -265,12 +350,15 @@ def _kotlin_round(value: float) -> int:
 
 
 def build_handshake(user: ScaleUser, mac: bytes, now: int | None = None,
-                    tz_offset_min: int | None = None) -> list[bytes]:
+                    tz_offset_min: int | None = None,
+                    today: date | None = None) -> list[bytes]:
     """Generate the 6 handshake commands for characteristic 0xA624.
 
     Mirrors ``RealmeSmartScaleHandler.buildHandshake`` / ``wrapAndObfuscate``.
     ``now`` is a unix epoch timestamp and ``tz_offset_min`` the local UTC
     offset in minutes, both only used for the scale time-set command.
+    ``today`` selects the date used to derive the age from ``date_of_birth``
+    (defaults to the current local date).
     """
     if now is None:
         now = int(time.time())
@@ -284,6 +372,7 @@ def build_handshake(user: ScaleUser, mac: bytes, now: int | None = None,
     ts = now
     sex_byte = 0x00 if user.is_male() else 0x80
     h_cm = _kotlin_round(user.height_cm)
+    age = user.current_age(today)
 
     # openScale: new users (initialWeight <= 0) get the 0xFFFF sentinel.
     if user.initial_weight <= 0.0:
@@ -299,7 +388,7 @@ def build_handshake(user: ScaleUser, mac: bytes, now: int | None = None,
     p2 = bytes((0x00, 0x0A, 0x18)) + bytes((ts >> 24, (ts >> 16) & 0xFF,
                                             (ts >> 8) & 0xFF, ts & 0xFF)) + bytes((tz_byte,))  # Set time
     p3 = bytes((0x48, 0x01, 0x00, 0x01))  # Start measure
-    p4 = (bytes((0x10, 0x01, 0x01, sex_byte, user.age & 0xFF))
+    p4 = (bytes((0x10, 0x01, 0x01, sex_byte, age & 0xFF))
           + u16be(h_cm)
           + bytes((0x00, 0x00))
           + u16be(weight_to_send))  # User info
@@ -409,7 +498,8 @@ def decode_measurement(data: bytes, mac: bytes) -> DecodedMeasurement | None:
 
 
 def compute_body_composition(
-    user: ScaleUser, weight_kg: float, impedance: int | None
+    user: ScaleUser, weight_kg: float, impedance: int | None,
+    today: date | None = None,
 ) -> tuple[float, float, float, float, float, float] | None:
     """Derive body-composition figures from weight + impedance + profile.
 
@@ -421,8 +511,9 @@ def compute_body_composition(
     if not impedance or impedance <= 0:
         return None
 
+    age = user.current_age(today)
     calc = YunmaiBia(user.sex_int(), user.height_cm, user.activity_level)
-    fat_pct = calc.get_fat(user.age, weight_kg, impedance)
+    fat_pct = calc.get_fat(age, weight_kg, impedance)
     if fat_pct <= 0.0:
         return None
 
@@ -433,7 +524,7 @@ def compute_body_composition(
         calc.get_water(fat_pct),
         calc.get_bone_mass(muscle_pct, weight_kg),
         calc.get_lean_body_mass(weight_kg, fat_pct),
-        calc.get_visceral_fat(fat_pct, user.age),
+        calc.get_visceral_fat(fat_pct, age),
     )
 
 

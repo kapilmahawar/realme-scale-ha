@@ -3,9 +3,10 @@
 The scale is discovered through Home Assistant's Bluetooth integration
 (local adapter or proxy that relays advertisements).  Because the RMH2011
 only streams data to an *active* GATT client, the flow additionally asks for
-the first user profile (sex / age / height / activity level / initial
-weight) that is written into the handshake and used for the local BIA
-calculation.
+the first user profile (sex / date of birth / height / activity level /
+initial weight) that is written into the handshake and used for the local
+BIA calculation.  The user's age is derived from their date of birth, so it
+never needs a manual yearly update.
 
 The options flow is a menu for managing **multiple users** after install:
 add / edit / remove users, pick the active (handshake) user, tune the
@@ -16,6 +17,7 @@ specific user from a list.
 from __future__ import annotations
 
 import re
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -32,12 +34,13 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ACTIVITY_LEVELS,
     CONF_ACTIVITY_LEVEL,
-    CONF_AGE,
     CONF_AUTO_ASSIGN_KG,
+    CONF_DATE_OF_BIRTH,
     CONF_EXPECTED_WEIGHT,
     CONF_HEIGHT,
     CONF_IMPEDANCE_TOL_OHM,
@@ -61,6 +64,8 @@ from .records import display_label
 from .scale_controller import (
     ScaleUser,
     build_user_options,
+    dob_error,
+    parse_dob,
     parse_user_options,
 )
 
@@ -109,6 +114,14 @@ def person_choices(hass: HomeAssistant) -> dict[str, str]:
     return choices
 
 
+def _local_date(hass: HomeAssistant) -> date:
+    """Today's date in the HA-configured time zone (flow validation)."""
+    tz = dt_util.get_time_zone(hass.config.time_zone)
+    if tz is None:  # pragma: no cover - HA always sets a time zone
+        tz = timezone.utc
+    return datetime.now(tz=tz).date()
+
+
 def profile_schema(
     data: dict[str, Any] | None = None,
     persons: dict[str, str] | None = None,
@@ -117,6 +130,11 @@ def profile_schema(
 
     ``persons`` adds an optional dropdown linking the profile to an existing
     Home Assistant person entity (the profile name auto-fills from it).
+
+    The user's age is *not* collected: ``date_of_birth`` is stored and the
+    current age is derived from it.  New-user steps enforce the DOB being
+    present in code (like the other fields); editing a legacy profile may
+    leave it blank so its stored age keeps being used until a DOB is given.
     """
     data = data or {}
     schema: dict[vol.Marker, Any] = {
@@ -128,10 +146,10 @@ def profile_schema(
             CONF_SEX,
             default=data.get(CONF_SEX, SEX_MALE),
         ): vol.In(_sex_options()),
-        vol.Required(
-            CONF_AGE,
-            default=data.get(CONF_AGE, 30),
-        ): vol.All(vol.Coerce(int), vol.Range(min=1, max=120)),
+        vol.Optional(
+            CONF_DATE_OF_BIRTH,
+            default=data.get(CONF_DATE_OF_BIRTH, ""),
+        ): str,
         vol.Required(
             CONF_HEIGHT,
             default=data.get(CONF_HEIGHT, 175.0),
@@ -185,22 +203,31 @@ def _profile_from_input(
     user_input: dict[str, Any],
     user_id: str,
     persons: dict[str, str] | None = None,
+    *,
+    legacy_age: int = 30,
 ) -> ScaleUser:
     """Build a ScaleUser from validated form input.
 
     When no name was typed but a person was picked, the profile name is
     taken from that person so setup can be a single dropdown + confirm.
+
+    The form collects ``date_of_birth``; the age is derived from it at run
+    time.  A blank DOB (legacy profile being edited without one yet) keeps
+    the profile's stored age via ``legacy_age``.
     """
     name = str(user_input.get(CONF_USER_NAME, "")).strip()
     person = str(user_input.get(CONF_PERSON_ENTITY, ""))
     if not name and person and persons:
         name = str(persons.get(person, "")).strip()
+    dob_raw = str(user_input.get(CONF_DATE_OF_BIRTH, "") or "").strip()
+    dob = parse_dob(dob_raw)
     return ScaleUser(
         user_id=user_id,
         name=name,
         person_entity_id=person,
         sex=str(user_input[CONF_SEX]),
-        age=int(user_input[CONF_AGE]),
+        age=legacy_age if dob is None else 30,
+        date_of_birth=dob.isoformat() if dob is not None else "",
         height_cm=float(user_input[CONF_HEIGHT]),
         activity_level=str(user_input[CONF_ACTIVITY_LEVEL]),
         initial_weight=float(user_input.get(CONF_INITIAL_WEIGHT, 0.0)),
@@ -217,7 +244,7 @@ def _profile_prefill(user: ScaleUser) -> dict[str, Any]:
     return {
         CONF_USER_NAME: user.name,
         CONF_SEX: user.sex,
-        CONF_AGE: user.age,
+        CONF_DATE_OF_BIRTH: user.date_of_birth,
         CONF_HEIGHT: user.height_cm,
         CONF_ACTIVITY_LEVEL: user.activity_level,
         CONF_INITIAL_WEIGHT: user.initial_weight,
@@ -380,19 +407,26 @@ class RealmeScaleConfigFlow(ConfigFlow, domain=DOMAIN):
 
         Offers a dropdown of existing HA People: picking one auto-fills the
         profile name; the profile numbers still need confirming once
-        (they drive the handshake and body-composition math).
+        (they drive the handshake and body-composition math).  Age is
+        derived from the date of birth, which is required for a new user.
         """
         errors: dict[str, str] = {}
         persons = person_choices(self.hass)
         if user_input is not None:
-            user = _profile_from_input(user_input, _new_user_id(), persons)
-            return self.async_create_entry(
-                title=f"{self._name} ({self._address})",
-                data={CONF_ADDRESS: self._address, CONF_NAME: self._name},
-                options=build_user_options(
-                    [user], user.user_id, DEFAULT_AUTO_ASSIGN_KG
-                ),
+            dob_err = dob_error(
+                user_input.get(CONF_DATE_OF_BIRTH), on=_local_date(self.hass)
             )
+            if dob_err is not None:
+                errors[CONF_DATE_OF_BIRTH] = dob_err
+            else:
+                user = _profile_from_input(user_input, _new_user_id(), persons)
+                return self.async_create_entry(
+                    title=f"{self._name} ({self._address})",
+                    data={CONF_ADDRESS: self._address, CONF_NAME: self._name},
+                    options=build_user_options(
+                        [user], user.user_id, DEFAULT_AUTO_ASSIGN_KG
+                    ),
+                )
 
         return self.async_show_form(
             step_id="profile",
@@ -526,7 +560,11 @@ class RealmeScaleOptionsFlow(OptionsFlow):
     async def async_step_add_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Collect a new user profile (optionally linked to an HA person)."""
+        """Collect a new user profile (optionally linked to an HA person).
+
+        A new user must provide a date of birth: age is derived from it, so
+        there is no age input to fall back to.
+        """
         errors: dict[str, str] = {}
         persons = person_choices(self.hass)
         if user_input is not None:
@@ -534,7 +572,12 @@ class RealmeScaleOptionsFlow(OptionsFlow):
             person = str(user_input.get(CONF_PERSON_ENTITY, ""))
             if name_blank and not person:
                 errors[CONF_USER_NAME] = "name_required"
-            else:
+            dob_err = dob_error(
+                user_input.get(CONF_DATE_OF_BIRTH), on=_local_date(self.hass)
+            )
+            if dob_err is not None:
+                errors[CONF_DATE_OF_BIRTH] = dob_err
+            if not errors:
                 user = _profile_from_input(user_input, _new_user_id(), persons)
                 self._users_or_default().append(user)
                 return await self.async_step_init()
@@ -566,7 +609,12 @@ class RealmeScaleOptionsFlow(OptionsFlow):
     async def async_step_edit_user_form(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Edit one user's profile (person link optional)."""
+        """Edit one user's profile (person link optional).
+
+        A legacy profile without a date of birth may keep using its stored
+        age by leaving the DOB blank.  Once a DOB is set it becomes the
+        source of truth, so it cannot be silently cleared back to nothing.
+        """
         users = self._users_or_default()
         target_id = self._edit_user_id
         target = next((u for u in users if u.user_id == target_id), None)
@@ -580,8 +628,18 @@ class RealmeScaleOptionsFlow(OptionsFlow):
             person = str(user_input.get(CONF_PERSON_ENTITY, ""))
             if name_blank and not person:
                 errors[CONF_USER_NAME] = "name_required"
-            else:
-                updated = _profile_from_input(user_input, target_id, persons)
+            raw_dob = str(user_input.get(CONF_DATE_OF_BIRTH, "") or "").strip()
+            if raw_dob or target.date_of_birth:
+                # Entering a new DOB, or keeping/editing an existing one:
+                # it must be a valid, non-future date.
+                dob_err = dob_error(raw_dob, on=_local_date(self.hass))
+                if dob_err is not None:
+                    errors[CONF_DATE_OF_BIRTH] = dob_err
+            # blank DOB on a legacy profile -> keep its stored age.
+            if not errors:
+                updated = _profile_from_input(
+                    user_input, target_id, persons, legacy_age=target.age
+                )
                 users[users.index(target)] = updated
                 return await self.async_step_init()
 

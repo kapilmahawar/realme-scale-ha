@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-09-09
+
+### Added
+- **Date-of-birth based user profiles**: the user profile stores an optional
+  `date_of_birth` instead of collecting an age; the current age is derived
+  from it with a birthday-aware calculation, so it never needs a manual
+  yearly update. The handshake and body-composition math receive the
+  derived age (HA-local date, no UTC off-by-one around birthdays), and
+  derived sensors refresh once per HA-local day.
+- **Safe migration for existing profiles**: profiles created before DOB
+  support keep their stored age and load unchanged; no DOB is ever
+  fabricated. Enter a date of birth once through Options → Edit user and it
+  becomes the source of truth (the age key is dropped on save). A blank DOB
+  stays allowed for legacy profiles while they keep using their stored age.
+- DOB input validation: invalid dates and future dates are rejected with
+  clear UI errors (`YYYY-MM-DD`, year 1900+).
+- Unit tests: birthday-aware age math (including leap days), DOB
+  validation, legacy profile loading, serialization round-trips, handshake
+  age byte and multi-user independence (`tests/test_dob.py`).
+
+### Changed
+- Options/Config flow user forms: "Age" replaced by "Date of birth" with an
+  explanatory note ("your age is calculated automatically from this date").
+  No stable ids, device/entity relationships, Person links, measurement
+  history or deletion behavior changed.
+
 ## [0.8.2] - 2026-09-09
 
 ### Changed (repository presentation only - no functionality changes)
@@ -350,7 +376,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `realme_scale_measurement` HA event and `realme_scale.reconnect` service.
 - Unit tests + hardware-free protocol smoke test (`tests/`).
 
-[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kapilmahawar/realme-scale-ha/compare/v0.7.0...v0.8.0

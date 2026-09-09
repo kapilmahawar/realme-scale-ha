@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 from bleak import BleakClient
@@ -92,6 +93,18 @@ def _tz_offset_minutes(hass: HomeAssistant) -> int:
     return int(offset.total_seconds() // 60)
 
 
+def _local_today(hass: HomeAssistant) -> date:
+    """Today's date in the HA-configured time zone."""
+    import datetime as _dt
+
+    import homeassistant.util.dt as dt_util
+
+    tz = dt_util.get_time_zone(hass.config.time_zone)
+    if tz is None:  # pragma: no cover - HA always sets a time zone
+        tz = _dt.timezone.utc
+    return _dt.datetime.now(tz=tz).date()
+
+
 class RealmeScaleCoordinator:
     """Maintains the active BLE session, users and the measurement queue."""
 
@@ -137,6 +150,7 @@ class RealmeScaleCoordinator:
         self._listeners: set[Callable[[], None]] = set()
         self._connect_task: asyncio.Task | None = None
         self._keepalive_task: asyncio.Task | None = None
+        self._refresh_task: asyncio.Task | None = None
         self._closing = False
         self._disconnected_future: asyncio.Future | None = None
         self._lock = asyncio.Lock()
@@ -164,6 +178,10 @@ class RealmeScaleCoordinator:
     def active_user(self) -> ScaleUser | None:
         """The profile currently written into the scale handshake."""
         return self._user_by_id.get(self.active_user_id)
+
+    def age_today(self, user: ScaleUser) -> int:
+        """The user's current age in the HA-configured time zone."""
+        return user.current_age(_local_today(self.hass))
 
     def latest_measurement(self, user_id: str) -> ScaleMeasurement | None:
         """Latest attributed measurement for a user, or ``None``."""
@@ -210,6 +228,40 @@ class RealmeScaleCoordinator:
             self._run_connection_loop(),
             name=f"{DOMAIN}_connect_{self.address}",
         )
+        if self._refresh_task is None or self._refresh_task.done():
+            self._refresh_task = asyncio.create_task(
+                self._daily_refresh_loop(),
+                name=f"{DOMAIN}_refresh_{self.address}",
+            )
+
+    async def _daily_refresh_loop(self) -> None:
+        """Refresh listeners once per HA-local day.
+
+        Lets date-of-birth derived values (age, and every sensor computed
+        from it) roll over on the user's birthday without needing a new
+        scale measurement - age is derived from the DOB at each refresh.
+        """
+        import datetime as _dt
+
+        import homeassistant.util.dt as dt_util
+
+        while not self._closing:
+            try:
+                tz = dt_util.get_time_zone(self.hass.config.time_zone)
+                if tz is None:  # pragma: no cover - HA always sets a tz
+                    tz = _dt.timezone.utc
+                now = _dt.datetime.now(tz=tz)
+                tomorrow = (now + _dt.timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                await asyncio.sleep(max((tomorrow - now).total_seconds(), 1.0))
+                if not self._closing:
+                    self._async_notify_listeners()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # pragma: no cover - defensive loop
+                _LOGGER.exception("Daily refresh loop failed")
+                await asyncio.sleep(3600)
 
     def _rehydrate_latest(self) -> None:
         """Rebuild latest_by_user from identity-valid stored records."""
@@ -224,6 +276,9 @@ class RealmeScaleCoordinator:
         if self._connect_task:
             self._connect_task.cancel()
             await asyncio.gather(self._connect_task, return_exceptions=True)
+        if self._refresh_task:
+            self._refresh_task.cancel()
+            await asyncio.gather(self._refresh_task, return_exceptions=True)
         await self._disconnect_client()
 
     async def async_reconnect(self) -> None:
@@ -413,7 +468,8 @@ class RealmeScaleCoordinator:
         tz_offset_min = _tz_offset_minutes(self.hass)
         user = self.active_user() or ScaleUser()
         commands = build_handshake(
-            user, self.mac, tz_offset_min=tz_offset_min
+            user, self.mac, tz_offset_min=tz_offset_min,
+            today=_local_today(self.hass),
         )
         for cmd in commands:
             await self._write_to(client, CHR_A624, cmd)
@@ -498,7 +554,8 @@ class RealmeScaleCoordinator:
             measurement.user_id = user.user_id
             measurement.user_name = user.name
             metrics = compute_body_composition(
-                user, decoded.weight_kg, decoded.impedance
+                user, decoded.weight_kg, decoded.impedance,
+                today=_local_today(self.hass),
             )
             if metrics is not None:
                 (
@@ -798,7 +855,8 @@ class RealmeScaleCoordinator:
         measurement.user_id = user.user_id
         measurement.user_name = user.name
         metrics = compute_body_composition(
-            user, measurement.weight_kg, measurement.impedance
+            user, measurement.weight_kg, measurement.impedance,
+            today=_local_today(self.hass),
         )
         for field in (
             "body_fat",

@@ -52,7 +52,11 @@ LEGACY_USER_ID: Final = "default"  # id used when migrating single-profile entri
 CONF_USER_NAME: Final = "user_name"
 CONF_PERSON_ENTITY: Final = "person_entity_id"  # optional HA person.* link
 CONF_SEX: Final = "sex"            # "male" | "female"
-CONF_AGE: Final = "age"            # years (int)
+CONF_AGE: Final = "age"            # legacy years (int); kept for migration
+# Date of birth, ISO "YYYY-MM-DD". Empty/absent = not configured yet; the
+# current age is derived from it (CONF_AGE remains the fallback for legacy
+# profiles that predate date-of-birth support).
+CONF_DATE_OF_BIRTH: Final = "date_of_birth"
 CONF_HEIGHT: Final = "height"      # cm (float)
 CONF_ACTIVITY_LEVEL: Final = "activity_level"  # openScale ActivityLevel name
 CONF_INITIAL_WEIGHT: Final = "initial_weight"  # kg (float); 0 -> 0xFFFF sentinel

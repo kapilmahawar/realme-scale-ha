@@ -41,6 +41,8 @@ all without cloud services.
 - Optional linking of users to existing Home Assistant **People**
 - Ambiguous or unrecognized readings stay **unassigned** — nothing is
   silently guessed
+- **Date of birth based profiles**: the current age is derived from the
+  stored date of birth, so age never needs a manual yearly update
 
 ### Body composition
 
@@ -129,9 +131,11 @@ https://github.com/kapilmahawar/realme-scale-ha
 
 1. Add the integration and pick the discovered scale, or enter its Bluetooth
    address (`AA:BB:CC:DD:EE:FF`).
-2. Create the **first user** — a profile with sex, age, height and activity
-   level, plus an optional expected weight and identification tolerances.
-   You may link it to an existing Home Assistant **Person**.
+2. Create the **first user** — a profile with sex, date of birth, height and
+   activity level, plus an optional expected weight and identification
+   tolerances. You may link it to an existing Home Assistant **Person**.
+   Your age is calculated automatically from your date of birth, so you do
+   not need to update it every year.
 3. Add further users later under
    **Settings → Devices & services → Realme Smart Scale → Configure**.
 
@@ -140,11 +144,17 @@ People, remove users, set the handshake profile, adjust automatic
 identification defaults, assign or reassign measurements, and **Save &
 Close** to apply everything.
 
+**Existing users:** profiles created before date-of-birth support keep using
+their stored age until you enter a date of birth once under
+*Options → Edit user*. The profile keeps working normally in the meantime
+— nothing is guessed or overwritten.
+
 > Three different roles should not be confused:
 >
 > - a **configured user** is a profile you created;
-> - the **handshake profile** is the profile whose sex/age/height is written
->   into the scale during the Bluetooth handshake;
+> - the **handshake profile** is the profile whose sex/date of birth/height
+>   is written into the scale during the Bluetooth handshake (age is
+>   calculated from the date of birth);
 > - the **attributed user** is who automatic identification decides was on
 >   the scale for a given measurement.
 >

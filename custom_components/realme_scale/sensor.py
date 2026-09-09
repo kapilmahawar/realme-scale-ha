@@ -8,7 +8,7 @@ exposes an "unassigned measurements" counter for the unknown queue.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
@@ -401,7 +401,12 @@ class RealmeScaleDerivedSensor(SensorEntity):
         if user is None or measurement is None:
             return None
         try:
-            return self._compute(user, measurement)
+            # Derived metrics that depend on age (BMR, categories, body
+            # type) must see the user's *current* age derived from their
+            # date of birth in the HA-local time zone - never a stale
+            # snapshot from when the profile was last saved.
+            age_user = replace(user, age=self.coordinator.age_today(user))
+            return self._compute(age_user, measurement)
         except (TypeError, ValueError, ZeroDivisionError):
             return None
 

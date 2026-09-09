@@ -17,13 +17,16 @@
           "person_entity_id": "Home Assistant person (optional)",
           "user_name": "User name",
           "sex": "Sex",
-          "age": "Age",
+          "date_of_birth": "Date of birth",
           "height": "Height (cm)",
           "activity_level": "Activity level",
           "initial_weight": "Initial weight (kg, 0 = new user)",
           "expected_weight_kg": "Expected weight (kg)",
           "weight_tolerance_kg": "Identification tolerance (kg)",
           "impedance_tol_ohm": "Impedance tolerance (Ohm)"
+        },
+        "data_description": {
+          "date_of_birth": "Your age is calculated automatically from this date."
         }
       }
     },
@@ -34,7 +37,10 @@
     },
     "error": {
       "name_required": "Please enter a user name.",
-      "invalid_mac": "Enter the scale's Bluetooth MAC address in the form XX:XX:XX:XX:XX:XX."
+      "invalid_mac": "Enter the scale's Bluetooth MAC address in the form XX:XX:XX:XX:XX:XX.",
+      "dob_required": "Please enter the user's date of birth.",
+      "dob_invalid": "Enter a valid date of birth in the form YYYY-MM-DD (year 1900 or later).",
+      "dob_future": "The date of birth cannot be in the future."
     }
   },
   "options": {
@@ -55,17 +61,21 @@
       },
       "add_user": {
         "title": "Add a user",
+        "description": "The user's age is calculated automatically from their date of birth.",
         "data": {
           "person_entity_id": "Home Assistant person (optional)",
           "user_name": "User name",
           "sex": "Sex",
-          "age": "Age",
+          "date_of_birth": "Date of birth",
           "height": "Height (cm)",
           "activity_level": "Activity level",
           "initial_weight": "Initial weight (kg, 0 = new user)",
           "expected_weight_kg": "Expected weight (kg)",
           "weight_tolerance_kg": "Identification tolerance (kg)",
           "impedance_tol_ohm": "Impedance tolerance (Ohm)"
+        },
+        "data_description": {
+          "date_of_birth": "Your age is calculated automatically from this date."
         }
       },
       "edit_user": {
@@ -77,17 +87,21 @@
       },
       "edit_user_form": {
         "title": "Edit {user}",
+        "description": "The user's age is calculated automatically from their date of birth. If the profile has no date of birth yet, its stored age keeps being used until you add one.",
         "data": {
           "person_entity_id": "Home Assistant person (optional)",
           "user_name": "User name",
           "sex": "Sex",
-          "age": "Age",
+          "date_of_birth": "Date of birth",
           "height": "Height (cm)",
           "activity_level": "Activity level",
           "initial_weight": "Initial weight (kg, 0 = new user)",
           "expected_weight_kg": "Expected weight (kg)",
           "weight_tolerance_kg": "Identification tolerance (kg)",
           "impedance_tol_ohm": "Impedance tolerance (Ohm)"
+        },
+        "data_description": {
+          "date_of_birth": "Your age is calculated automatically from this date."
         }
       },
       "remove_user": {
@@ -142,7 +156,10 @@
     "error": {
       "name_required": "Please enter a user name.",
       "confirm_required": "Tick the confirmation box to delete the user.",
-      "user_missing": "That measurement is no longer available (it may already have been assigned)."
+      "user_missing": "That measurement is no longer available (it may already have been assigned).",
+      "dob_required": "Please enter the user's date of birth.",
+      "dob_invalid": "Enter a valid date of birth in the form YYYY-MM-DD (year 1900 or later).",
+      "dob_future": "The date of birth cannot be in the future."
     }
   },
   "exceptions": {
