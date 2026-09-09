@@ -364,13 +364,18 @@ python -m pytest tests/ -v
 
 ---
 
-## License & attribution
+## License
 
-This project contains protocol and body-composition code derived from
-[openScale](https://github.com/oliexdev/openScale)
-(`RealmeSmartScaleHandler`, `YunmaiLib`), which is distributed under the
-**GNU GPL v3**. This project is therefore licensed under the
-**GNU GPL v3** — see [LICENSE](LICENSE).
+This project is licensed under the GNU General Public License v3.0.
 
-This is an independent community project. It is not affiliated with,
-endorsed by, or sponsored by realme, openScale or Home Assistant.
+Parts of the Realme Smart Scale protocol implementation and
+body-composition functionality are derived from the
+[openScale](https://github.com/oliexdev/openScale) project, including code
+originating from `RealmeSmartScaleHandler` and `YunmaiLib`.
+
+openScale is licensed under the GNU General Public License v3.0.
+
+See the `LICENSE` file for the complete license text.
+
+`realme-scale-ha` is an independent community project. It is not affiliated
+with, endorsed by, or sponsored by realme, openScale, or Home Assistant.
